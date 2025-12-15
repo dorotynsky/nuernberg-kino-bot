@@ -5,7 +5,7 @@ import os
 import sys
 from pathlib import Path
 
-from telegram import Update, Bot, ReplyKeyboardMarkup, KeyboardButton
+from telegram import Update, Bot, BotCommand
 from telegram.error import TelegramError
 from typing import Set
 
@@ -77,18 +77,27 @@ if not BOT_TOKEN:
 bot = Bot(token=BOT_TOKEN)
 subscriber_manager = SubscriberManager()
 
+# Track if bot commands have been set up
+_commands_initialized = False
 
-def get_main_keyboard() -> ReplyKeyboardMarkup:
-    """Create main keyboard with command buttons."""
-    keyboard = [
-        [KeyboardButton("📊 Статус")],
-        [KeyboardButton("✅ Подписаться"), KeyboardButton("❌ Отписаться")]
-    ]
-    return ReplyKeyboardMarkup(
-        keyboard,
-        resize_keyboard=True,
-        one_time_keyboard=False
-    )
+
+async def setup_bot_commands():
+    """Set up bot command menu (only runs once per container)."""
+    global _commands_initialized
+    if _commands_initialized:
+        return
+
+    try:
+        commands = [
+            BotCommand("start", "Подписаться на уведомления"),
+            BotCommand("stop", "Отписаться от уведомлений"),
+            BotCommand("status", "Проверить статус подписки")
+        ]
+        await bot.set_my_commands(commands)
+        _commands_initialized = True
+        print("[INFO] Bot commands menu initialized")
+    except Exception as e:
+        print(f"[WARNING] Failed to set bot commands: {e}")
 
 
 async def handle_start_command(chat_id: int, user_first_name: str) -> str:
@@ -112,7 +121,7 @@ async def handle_start_command(chat_id: int, user_first_name: str) -> str:
             "✨ <b>Новые фильмы</b> в программе\n"
             "🔄 <b>Изменения сеансов</b> показа\n"
             "❌ <b>Удаление</b> фильмов из программы\n\n"
-            "Используйте кнопки ниже для управления подпиской."
+            "Используйте меню команд (☰) для управления подпиской."
         )
 
         try:
@@ -120,8 +129,7 @@ async def handle_start_command(chat_id: int, user_first_name: str) -> str:
                 chat_id=chat_id,
                 photo=welcome_image_url,
                 caption=caption,
-                parse_mode='HTML',
-                reply_markup=get_main_keyboard()
+                parse_mode='HTML'
             )
             return None  # Photo already sent, don't send text message
         except Exception as e:
@@ -134,13 +142,13 @@ async def handle_start_command(chat_id: int, user_first_name: str) -> str:
                 "✨ Добавляются новые фильмы\n"
                 "🔄 Обновляются сеансы\n"
                 "❌ Удаляются фильмы\n\n"
-                "Используйте кнопки ниже для управления подпиской."
+                "Используйте меню команд (☰) для управления подпиской."
             )
     else:
         return (
             f"👋 Привет, {user_first_name}!\n\n"
             "Вы уже подписаны на уведомления.\n\n"
-            "Используйте кнопки ниже для управления подпиской."
+            "Используйте меню команд (☰) для управления подпиской."
         )
 
 
@@ -157,12 +165,12 @@ async def handle_stop_command(chat_id: int) -> str:
     if subscriber_manager.remove_subscriber(chat_id):
         return (
             "👋 Вы отписались от уведомлений Meisengeige.\n\n"
-            "Вы можете подписаться снова в любое время."
+            "Вы можете подписаться снова в любое время используя команду /start."
         )
     else:
         return (
             "Вы не подписаны на уведомления.\n\n"
-            "Используйте кнопку \"✅ Подписаться\" для подписки."
+            "Используйте команду /start для подписки."
         )
 
 
@@ -187,13 +195,13 @@ async def handle_status_command(chat_id: int) -> str:
                 "✅ <b>Подписка активна</b>\n\n"
                 f"Вы получаете обновления программы Meisengeige.\n"
                 f"Всего подписчиков: {total_subscribers}\n\n"
-                "Используйте кнопки ниже для управления подпиской."
+                "Используйте меню команд (☰) для управления подпиской."
             )
         else:
             return (
                 "❌ <b>Не подписаны</b>\n\n"
                 "Вы не получаете уведомления.\n\n"
-                "Используйте кнопку \"✅ Подписаться\" для подписки."
+                "Используйте команду /start для подписки."
             )
     except Exception as e:
         print(f"[ERROR] Error in handle_status_command: {e}")
@@ -213,6 +221,9 @@ async def process_update(update_data: dict) -> dict:
         Response dict
     """
     try:
+        # Initialize bot commands menu (runs only once per container)
+        await setup_bot_commands()
+
         update = Update.de_json(update_data, bot)
 
         if not update.message or not update.message.text:
@@ -224,17 +235,17 @@ async def process_update(update_data: dict) -> dict:
 
         print(f"[DEBUG] Processing command: '{text}' from chat_id: {chat_id}")
 
-        # Route command (support both slash commands and button text)
+        # Route command (only slash commands)
         response_text = None
         parse_mode = None
 
-        if text in ['/start', '✅ Подписаться']:
+        if text == '/start':
             print("[DEBUG] Routing to handle_start_command")
             response_text = await handle_start_command(chat_id, user_first_name)
-        elif text in ['/stop', '❌ Отписаться']:
+        elif text == '/stop':
             print("[DEBUG] Routing to handle_stop_command")
             response_text = await handle_stop_command(chat_id)
-        elif text in ['/status', '📊 Статус']:
+        elif text == '/status':
             print("[DEBUG] Routing to handle_status_command")
             response_text = await handle_status_command(chat_id)
             parse_mode = 'HTML'
@@ -244,7 +255,7 @@ async def process_update(update_data: dict) -> dict:
             print(f"[DEBUG] Unknown command: {text}")
             response_text = (
                 "Неизвестная команда.\n\n"
-                "Используйте кнопки ниже для управления подпиской."
+                "Используйте меню команд (☰) для управления подпиской."
             )
 
         # Send response (only if response_text is not None)
@@ -254,8 +265,7 @@ async def process_update(update_data: dict) -> dict:
             await bot.send_message(
                 chat_id=chat_id,
                 text=response_text,
-                parse_mode=parse_mode,
-                reply_markup=get_main_keyboard()
+                parse_mode=parse_mode
             )
             print("[DEBUG] Message sent successfully")
         else:
