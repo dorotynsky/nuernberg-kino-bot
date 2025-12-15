@@ -470,14 +470,18 @@ subscriber_manager = SubscriberManager()
 language_manager = LanguageManager()
 version_manager = UserVersionManager()
 
-# Track if bot commands have been set up
-_commands_initialized = False
+# Track when bot commands were last set up (timestamp)
+_commands_last_set = 0
+_COMMANDS_CACHE_SECONDS = 3600  # Update commands max once per hour
 
 
 async def setup_bot_commands(bot: Bot):
-    """Set up bot command menu (only runs once per container)."""
-    global _commands_initialized
-    if _commands_initialized:
+    """Set up bot command menu (updates max once per hour)."""
+    global _commands_last_set
+
+    # Check if commands were set recently (within cache period)
+    current_time = time.time()
+    if current_time - _commands_last_set < _COMMANDS_CACHE_SECONDS:
         return
 
     try:
@@ -516,7 +520,7 @@ async def setup_bot_commands(bot: Bot):
         # Set default commands (fallback)
         await bot.set_my_commands(commands_en)
 
-        _commands_initialized = True
+        _commands_last_set = current_time
         print("[INFO] Bot commands menu initialized for all languages")
     except Exception as e:
         print(f"[WARNING] Failed to set bot commands: {e}")
