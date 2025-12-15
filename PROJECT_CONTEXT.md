@@ -52,3 +52,4 @@ Configuring Python 3.14.2 in the development environment. PyCharm currently show
 - Chat communication: Russian
 - Code, commits, messages: English only
 - Work step-by-step with user confirmation between steps
+- **IMPORTANT**: Do NOT add Claude Code attribution or Co-Authored-By lines to commit messages
