@@ -398,16 +398,43 @@ async def setup_bot_commands(bot: Bot):
         return
 
     try:
-        commands = [
+        # Commands in Russian
+        commands_ru = [
             BotCommand("films", "🎥 Показать текущую программу"),
             BotCommand("start", "✨ Подписаться на уведомления"),
             BotCommand("status", "📊 Проверить статус подписки"),
-            BotCommand("language", "🌍 Выбрать язык / Change language"),
+            BotCommand("language", "🌍 Выбрать язык"),
             BotCommand("stop", "❌ Отписаться от уведомлений")
         ]
-        await bot.set_my_commands(commands)
+
+        # Commands in German
+        commands_de = [
+            BotCommand("films", "🎥 Aktuelles Programm anzeigen"),
+            BotCommand("start", "✨ Benachrichtigungen abonnieren"),
+            BotCommand("status", "📊 Abonnementstatus prüfen"),
+            BotCommand("language", "🌍 Sprache wählen"),
+            BotCommand("stop", "❌ Benachrichtigungen abbestellen")
+        ]
+
+        # Commands in English
+        commands_en = [
+            BotCommand("films", "🎥 Show current program"),
+            BotCommand("start", "✨ Subscribe to notifications"),
+            BotCommand("status", "📊 Check subscription status"),
+            BotCommand("language", "🌍 Change language"),
+            BotCommand("stop", "❌ Unsubscribe from notifications")
+        ]
+
+        # Set commands for each language
+        await bot.set_my_commands(commands_ru, language_code="ru")
+        await bot.set_my_commands(commands_de, language_code="de")
+        await bot.set_my_commands(commands_en, language_code="en")
+
+        # Set default commands (fallback)
+        await bot.set_my_commands(commands_en)
+
         _commands_initialized = True
-        print("[INFO] Bot commands menu initialized")
+        print("[INFO] Bot commands menu initialized for all languages")
     except Exception as e:
         print(f"[WARNING] Failed to set bot commands: {e}")
 
