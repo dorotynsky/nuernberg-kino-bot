@@ -248,19 +248,18 @@ def _parse_showtimes(container) -> List[Showtime]:
     return showtimes
 
 
-# Initialize bot and subscriber manager
+# Initialize subscriber manager
 BOT_TOKEN = os.environ.get('TELEGRAM_BOT_TOKEN')
 if not BOT_TOKEN:
     raise ValueError("TELEGRAM_BOT_TOKEN environment variable not set")
 
-bot = Bot(token=BOT_TOKEN)
 subscriber_manager = SubscriberManager()
 
 # Track if bot commands have been set up
 _commands_initialized = False
 
 
-async def setup_bot_commands():
+async def setup_bot_commands(bot: Bot):
     """Set up bot command menu (only runs once per container)."""
     global _commands_initialized
     if _commands_initialized:
@@ -280,7 +279,7 @@ async def setup_bot_commands():
         print(f"[WARNING] Failed to set bot commands: {e}")
 
 
-async def handle_start_command(chat_id: int, user_first_name: str) -> str:
+async def handle_start_command(bot: Bot, chat_id: int, user_first_name: str) -> str:
     """
     Handle /start command.
 
@@ -334,7 +333,7 @@ async def handle_start_command(chat_id: int, user_first_name: str) -> str:
         )
 
 
-async def handle_stop_command(chat_id: int) -> str:
+async def handle_stop_command(bot: Bot, chat_id: int) -> str:
     """
     Handle /stop command.
 
@@ -356,7 +355,7 @@ async def handle_stop_command(chat_id: int) -> str:
         )
 
 
-async def handle_status_command(chat_id: int) -> str:
+async def handle_status_command(bot: Bot, chat_id: int) -> str:
     """
     Handle /status command.
 
@@ -392,7 +391,7 @@ async def handle_status_command(chat_id: int) -> str:
         return "Ошибка при проверке статуса. Попробуйте снова."
 
 
-async def handle_films_command(chat_id: int) -> None:
+async def handle_films_command(bot: Bot, chat_id: int) -> None:
     """
     Handle /films command - show brief list of current films with inline buttons.
 
@@ -443,7 +442,7 @@ async def handle_films_command(chat_id: int) -> None:
         )
 
 
-async def handle_film_details_callback(chat_id: int, film_id: str) -> None:
+async def handle_film_details_callback(bot: Bot, chat_id: int, film_id: str) -> None:
     """
     Handle callback query for film details.
 
@@ -538,8 +537,11 @@ async def process_update(update_data: dict) -> dict:
         Response dict
     """
     try:
+        # Create bot instance for this request
+        bot = Bot(token=BOT_TOKEN)
+
         # Initialize bot commands menu (runs only once per container)
-        await setup_bot_commands()
+        await setup_bot_commands(bot)
 
         update = Update.de_json(update_data, bot)
 
@@ -558,10 +560,10 @@ async def process_update(update_data: dict) -> dict:
             if callback_data.startswith('film_'):
                 # Show film details
                 film_id = callback_data.replace('film_', '')
-                await handle_film_details_callback(chat_id, film_id)
+                await handle_film_details_callback(bot, chat_id, film_id)
             elif callback_data == 'back_to_list':
                 # Return to films list
-                await handle_films_command(chat_id)
+                await handle_films_command(bot, chat_id)
 
             return {'status': 'success', 'type': 'callback_query'}
 
@@ -581,18 +583,18 @@ async def process_update(update_data: dict) -> dict:
 
         if text == '/start':
             print("[DEBUG] Routing to handle_start_command")
-            response_text = await handle_start_command(chat_id, user_first_name)
+            response_text = await handle_start_command(bot, chat_id, user_first_name)
         elif text == '/stop':
             print("[DEBUG] Routing to handle_stop_command")
-            response_text = await handle_stop_command(chat_id)
+            response_text = await handle_stop_command(bot, chat_id)
         elif text == '/status':
             print("[DEBUG] Routing to handle_status_command")
-            response_text = await handle_status_command(chat_id)
+            response_text = await handle_status_command(bot, chat_id)
             parse_mode = 'HTML'
             print(f"[DEBUG] Response text: {response_text[:50]}...")
         elif text == '/films':
             print("[DEBUG] Routing to handle_films_command")
-            await handle_films_command(chat_id)
+            await handle_films_command(bot, chat_id)
             return {'status': 'success', 'command': text}
         else:
             # Unknown command
