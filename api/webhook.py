@@ -323,7 +323,7 @@ async def handle_start_command(bot: Bot, chat_id: int, user_first_name: str) -> 
         welcome_image_url = "https://www.cinecitta.de/fileadmin/Seitenbanner/Seitenbanner_Meisengeige.jpg.pagespeed.ce.MUHRnnz-ET.jpg"
         caption = (
             f"🎬 <b>Добро пожаловать, {user_first_name}!</b>\n\n"
-            "Этот бот следит за программой <b>Meisengeige</b> в кинотеатре CineCitta Nürnberg.\n\n"
+            "Этот бот следит за программой кинотеатра <b>Meisengeige</b> Nürnberg.\n\n"
             "<b>Возможности:</b>\n"
             "🎥 Просмотр текущей программы\n"
             "✨ Уведомления о новых фильмах\n"
