@@ -424,9 +424,9 @@ async def setup_bot_commands(bot: Bot):
     try:
         commands = [
             BotCommand("films", "🎥 Показать текущую программу"),
-            BotCommand("language", "🌍 Выбрать язык / Change language"),
             BotCommand("start", "✨ Подписаться на уведомления"),
             BotCommand("status", "📊 Проверить статус подписки"),
+            BotCommand("language", "🌍 Выбрать язык / Change language"),
             BotCommand("stop", "❌ Отписаться от уведомлений")
         ]
         await bot.set_my_commands(commands)
