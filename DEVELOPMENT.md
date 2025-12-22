@@ -40,7 +40,7 @@ Create `.env` file in project root:
 ```bash
 # Required
 TELEGRAM_BOT_TOKEN=your_bot_token_here
-MONGODB_URI=mongodb+srv://user:password@cluster.mongodb.net/
+MONGODB_URI=mongodb+srv://<username>:<password>@<cluster>.mongodb.net/
 
 # Optional
 ADMIN_CHAT_ID=your_telegram_user_id  # For /broadcast command
