@@ -869,6 +869,51 @@ _commands_last_set = 0
 _COMMANDS_CACHE_SECONDS = 3600  # Update commands max once per hour
 
 
+def get_commands_for_language(lang: str) -> list:
+    """Get bot commands for a specific language."""
+    commands_by_lang = {
+        'ru': [
+            BotCommand("films", "🎥 Показать текущую программу"),
+            BotCommand("sources", "🎬 Управление источниками"),
+            BotCommand("start", "✨ Подписаться на уведомления"),
+            BotCommand("status", "📊 Проверить статус подписки"),
+            BotCommand("language", "🌍 Выбрать язык"),
+            BotCommand("stop", "❌ Отписаться от уведомлений")
+        ],
+        'de': [
+            BotCommand("films", "🎥 Aktuelles Programm anzeigen"),
+            BotCommand("sources", "🎬 Quellen verwalten"),
+            BotCommand("start", "✨ Benachrichtigungen abonnieren"),
+            BotCommand("status", "📊 Abonnementstatus prüfen"),
+            BotCommand("language", "🌍 Sprache wählen"),
+            BotCommand("stop", "❌ Benachrichtigungen abbestellen")
+        ],
+        'en': [
+            BotCommand("films", "🎥 Show current program"),
+            BotCommand("sources", "🎬 Manage sources"),
+            BotCommand("start", "✨ Subscribe to notifications"),
+            BotCommand("status", "📊 Check subscription status"),
+            BotCommand("language", "🌍 Change language"),
+            BotCommand("stop", "❌ Unsubscribe from notifications")
+        ]
+    }
+    return commands_by_lang.get(lang, commands_by_lang['en'])
+
+
+async def set_user_commands(bot: Bot, chat_id: int, lang: str):
+    """Set bot commands menu for a specific user in their chosen language."""
+    try:
+        from telegram import BotCommandScopeChat
+
+        commands = get_commands_for_language(lang)
+        scope = BotCommandScopeChat(chat_id=chat_id)
+
+        await bot.set_my_commands(commands, scope=scope)
+        print(f"[INFO] Set commands for user {chat_id} in language {lang}")
+    except Exception as e:
+        print(f"[WARNING] Failed to set user-specific commands: {e}")
+
+
 async def setup_bot_commands(bot: Bot):
     """Set up bot command menu (updates max once per hour)."""
     global _commands_last_set
@@ -879,43 +924,13 @@ async def setup_bot_commands(bot: Bot):
         return
 
     try:
-        # Commands in Russian
-        commands_ru = [
-            BotCommand("films", "🎥 Показать текущую программу"),
-            BotCommand("sources", "🎬 Управление источниками"),
-            BotCommand("start", "✨ Подписаться на уведомления"),
-            BotCommand("status", "📊 Проверить статус подписки"),
-            BotCommand("language", "🌍 Выбрать язык"),
-            BotCommand("stop", "❌ Отписаться от уведомлений")
-        ]
-
-        # Commands in German
-        commands_de = [
-            BotCommand("films", "🎥 Aktuelles Programm anzeigen"),
-            BotCommand("sources", "🎬 Quellen verwalten"),
-            BotCommand("start", "✨ Benachrichtigungen abonnieren"),
-            BotCommand("status", "📊 Abonnementstatus prüfen"),
-            BotCommand("language", "🌍 Sprache wählen"),
-            BotCommand("stop", "❌ Benachrichtigungen abbestellen")
-        ]
-
-        # Commands in English
-        commands_en = [
-            BotCommand("films", "🎥 Show current program"),
-            BotCommand("sources", "🎬 Manage sources"),
-            BotCommand("start", "✨ Subscribe to notifications"),
-            BotCommand("status", "📊 Check subscription status"),
-            BotCommand("language", "🌍 Change language"),
-            BotCommand("stop", "❌ Unsubscribe from notifications")
-        ]
-
-        # Set commands for each language
-        await bot.set_my_commands(commands_ru, language_code="ru")
-        await bot.set_my_commands(commands_de, language_code="de")
-        await bot.set_my_commands(commands_en, language_code="en")
+        # Set commands for each language globally
+        await bot.set_my_commands(get_commands_for_language('ru'), language_code="ru")
+        await bot.set_my_commands(get_commands_for_language('de'), language_code="de")
+        await bot.set_my_commands(get_commands_for_language('en'), language_code="en")
 
         # Set default commands (fallback)
-        await bot.set_my_commands(commands_en)
+        await bot.set_my_commands(get_commands_for_language('en'))
 
         _commands_last_set = current_time
         print("[INFO] Bot commands menu initialized for all languages")
@@ -1438,6 +1453,9 @@ async def process_update(update_data: dict) -> dict:
                 lang = callback_data.replace('lang_', '')
                 language_manager.set_language(chat_id, lang)
 
+                # Set user-specific command menu in their language
+                await set_user_commands(bot, chat_id, lang)
+
                 # Send confirmation message
                 await bot.send_message(
                     chat_id=chat_id,
@@ -1454,6 +1472,9 @@ async def process_update(update_data: dict) -> dict:
                 # Language change (from /language command)
                 lang = callback_data.replace('changelang_', '')
                 language_manager.set_language(chat_id, lang)
+
+                # Set user-specific command menu in their language
+                await set_user_commands(bot, chat_id, lang)
 
                 # Send confirmation message in the newly selected language
                 await bot.send_message(
