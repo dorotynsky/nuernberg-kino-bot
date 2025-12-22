@@ -874,24 +874,21 @@ def get_commands_for_language(lang: str) -> list:
     commands_by_lang = {
         'ru': [
             BotCommand("films", "🎥 Показать текущую программу"),
-            BotCommand("sources", "🎬 Управление источниками"),
-            BotCommand("start", "✨ Подписаться на уведомления"),
+            BotCommand("sources", "🎬 Управление подписками"),
             BotCommand("status", "📊 Проверить статус подписки"),
             BotCommand("language", "🌍 Выбрать язык"),
             BotCommand("stop", "❌ Отписаться от уведомлений")
         ],
         'de': [
             BotCommand("films", "🎥 Aktuelles Programm anzeigen"),
-            BotCommand("sources", "🎬 Quellen verwalten"),
-            BotCommand("start", "✨ Benachrichtigungen abonnieren"),
+            BotCommand("sources", "🎬 Abonnements verwalten"),
             BotCommand("status", "📊 Abonnementstatus prüfen"),
             BotCommand("language", "🌍 Sprache wählen"),
             BotCommand("stop", "❌ Benachrichtigungen abbestellen")
         ],
         'en': [
             BotCommand("films", "🎥 Show current program"),
-            BotCommand("sources", "🎬 Manage sources"),
-            BotCommand("start", "✨ Subscribe to notifications"),
+            BotCommand("sources", "🎬 Manage subscriptions"),
             BotCommand("status", "📊 Check subscription status"),
             BotCommand("language", "🌍 Change language"),
             BotCommand("stop", "❌ Unsubscribe from notifications")
@@ -1540,7 +1537,7 @@ async def process_update(update_data: dict) -> dict:
         print(f"[DEBUG] Processing command: '{text}' from chat_id: {chat_id}")
 
         # Check and notify about version updates (for subscribed users)
-        await check_and_notify_version_update(bot, chat_id)
+        # await check_and_notify_version_update(bot, chat_id)
 
         # Route command (only slash commands)
         response_text = None
