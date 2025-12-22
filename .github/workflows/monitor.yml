@@ -1,4 +1,4 @@
-name: Monitor Meisengeige Program
+name: Monitor Cinema Programs
 
 on:
   # Run every day at 9:00 AM UTC (10:00 CET in winter, 11:00 CEST in summer)
@@ -43,9 +43,10 @@ jobs:
         uses: actions/cache/restore@v3
         with:
           path: state/
-          key: meisengeige-state-${{ github.run_id }}
+          key: cinema-monitoring-state-${{ github.run_id }}
           restore-keys: |
-            meisengeige-state-
+            cinema-monitoring-state-
+            meisengeige-state-  # Fallback for migration
 
       - name: Run monitoring script
         env:
@@ -58,4 +59,4 @@ jobs:
         if: always()
         with:
           path: state/
-          key: meisengeige-state-${{ github.run_id }}
+          key: cinema-monitoring-state-${{ github.run_id }}

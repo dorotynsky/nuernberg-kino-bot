@@ -45,6 +45,9 @@ class TelegramNotifier:
 
     async def send_update_notification(
         self,
+        source_id: str,
+        source_display_name: str,
+        source_url: str,
         new_films: List[Film],
         removed_films: List[Film],
         updated_films: List[Film],
@@ -53,6 +56,9 @@ class TelegramNotifier:
         Send notification about program updates with film posters.
 
         Args:
+            source_id: Source identifier
+            source_display_name: Human-readable source name
+            source_url: Source program URL
             new_films: List of newly added films
             removed_films: List of removed films
             updated_films: List of updated films (changed showtimes)
@@ -61,13 +67,14 @@ class TelegramNotifier:
             print("No changes detected, skipping notification")
             return
 
-        subscribers = self.subscriber_manager.get_all_subscribers()
+        # Get subscribers for this specific source
+        subscribers = self.subscriber_manager.get_subscribers_for_source(source_id)
 
         if not subscribers:
-            print("No subscribers, skipping notification")
+            print(f"No subscribers for {source_display_name}, skipping notification")
             return
 
-        print(f"Sending notifications to {len(subscribers)} subscriber(s)...")
+        print(f"Sending {source_display_name} notifications to {len(subscribers)} subscriber(s)...")
 
         success_count = 0
         error_count = 0
@@ -75,21 +82,24 @@ class TelegramNotifier:
         for chat_id in subscribers:
             try:
                 # Send header message
-                header = self._format_header(new_films, removed_films, updated_films)
+                header = self._format_header(
+                    source_display_name, source_url, new_films, removed_films, updated_films
+                )
                 await self.bot.send_message(
                     chat_id=chat_id,
                     text=header,
                     parse_mode='HTML',
+                    disable_web_page_preview=True,
                 )
 
                 # Send new films with photos
                 if new_films:
-                    for film in new_films:
+                    for film in new_films[:10]:  # Limit to 10
                         await self._send_film_with_photo(film, "✨ New Film", chat_id)
 
                 # Send updated films with photos
                 if updated_films:
-                    for film in updated_films:
+                    for film in updated_films[:10]:  # Limit to 10
                         await self._send_film_with_photo(film, "🔄 Updated", chat_id)
 
                 # Send removed films summary
@@ -109,7 +119,7 @@ class TelegramNotifier:
                 print(f"Error sending notification to {chat_id}: {e}")
                 # Continue with other subscribers
 
-        print(f"Notifications sent: {success_count} successful, {error_count} failed")
+        print(f"✅ Sent to {success_count} subscriber(s), ❌ {error_count} failed")
 
     async def _send_film_with_photo(self, film: Film, prefix: str, chat_id: int) -> None:
         """
@@ -148,6 +158,8 @@ class TelegramNotifier:
 
     def _format_header(
         self,
+        source_display_name: str,
+        source_url: str,
         new_films: List[Film],
         removed_films: List[Film],
         updated_films: List[Film],
@@ -156,6 +168,8 @@ class TelegramNotifier:
         Format header message with summary.
 
         Args:
+            source_display_name: Human-readable source name
+            source_url: Source program URL
             new_films: List of newly added films
             removed_films: List of removed films
             updated_films: List of updated films
@@ -163,7 +177,7 @@ class TelegramNotifier:
         Returns:
             Formatted header string
         """
-        lines = ["🎬 <b>Meisengeige Program Update</b>\n"]
+        lines = [f"🎬 <b>{source_display_name} Program Update</b>\n"]
 
         summary_parts = []
         if new_films:
@@ -176,7 +190,7 @@ class TelegramNotifier:
         if summary_parts:
             lines.append(", ".join(summary_parts))
 
-        lines.append("\n🔗 https://www.cinecitta.de/programm/meisengeige/")
+        lines.append(f"\n🔗 {source_url}")
 
         return "\n".join(lines)
 

@@ -92,12 +92,14 @@ class ProgramSnapshot:
 
     timestamp: str
     films: List[Film] = field(default_factory=list)
+    source_id: str = "meisengeige"  # Default for backward compatibility
 
     def to_dict(self) -> dict:
         """Convert to dictionary for JSON serialization."""
         return {
             "timestamp": self.timestamp,
             "films": [film.to_dict() for film in self.films],
+            "source_id": self.source_id,
         }
 
     @classmethod
@@ -107,4 +109,5 @@ class ProgramSnapshot:
         return cls(
             timestamp=data["timestamp"],
             films=films,
+            source_id=data.get("source_id", "meisengeige"),  # Backward compatibility
         )

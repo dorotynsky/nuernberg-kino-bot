@@ -11,16 +11,23 @@ from .models import ProgramSnapshot, Film
 class Storage:
     """Handles saving and loading program snapshots."""
 
-    def __init__(self, storage_dir: str = "state"):
+    def __init__(self, storage_dir: str = "state", source_id: str = "meisengeige"):
         """
         Initialize storage.
 
         Args:
             storage_dir: Directory to store state files
+            source_id: Source identifier for this storage instance
         """
         self.storage_dir = Path(storage_dir)
         self.storage_dir.mkdir(exist_ok=True)
-        self.snapshot_file = self.storage_dir / "latest_snapshot.json"
+        self.source_id = source_id
+        self.snapshot_file = self.storage_dir / f"{source_id}_snapshot.json"
+
+        # Migration: rename old file if exists
+        old_file = self.storage_dir / "latest_snapshot.json"
+        if old_file.exists() and not self.snapshot_file.exists() and source_id == "meisengeige":
+            old_file.rename(self.snapshot_file)
 
     def save_snapshot(self, films: List[Film]) -> None:
         """
@@ -32,6 +39,7 @@ class Storage:
         snapshot = ProgramSnapshot(
             timestamp=datetime.now().isoformat(),
             films=films,
+            source_id=self.source_id,  # Add source ID
         )
 
         with open(self.snapshot_file, 'w', encoding='utf-8') as f:

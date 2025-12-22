@@ -1,11 +1,13 @@
-"""Main script for Meisengeige cinema program monitoring."""
+"""Main script for multi-source cinema program monitoring."""
 
 import asyncio
 import sys
 from typing import Optional
 from dotenv import load_dotenv
 
+from .source_registry import SourceRegistry
 from .scraper import MeisengeigeScraper
+from .filmhaus_scraper import FilmhausScraper
 from .storage import Storage
 from .notifier import TelegramNotifier
 
@@ -20,7 +22,7 @@ async def main(
     chat_id: Optional[str] = None,
 ) -> int:
     """
-    Main monitoring function.
+    Main monitoring function for all cinema sources.
 
     Args:
         notify: Whether to send Telegram notifications
@@ -32,66 +34,90 @@ async def main(
         Exit code (0 for success, 1 for error)
     """
     try:
-        print("🎬 Starting Meisengeige program monitoring...")
+        print("🎬 Starting multi-source cinema program monitoring...")
 
-        # Initialize components
-        storage = Storage(storage_dir=storage_dir)
+        # Initialize source registry
+        source_registry = SourceRegistry()
+        source_registry.register_source(MeisengeigeScraper)
+        source_registry.register_source(FilmhausScraper)
 
-        print("📥 Fetching current program...")
-        with MeisengeigeScraper() as scraper:
-            current_films = scraper.scrape()
+        # Initialize notifier once
+        notifier = None
+        if notify:
+            notifier = TelegramNotifier(bot_token=bot_token, chat_id=chat_id)
 
-        print(f"✅ Found {len(current_films)} films")
+        # Process each source
+        for source_info in source_registry.list_sources():
+            print(f"\n📍 Checking {source_info.display_name}...")
 
-        # Load previous snapshot
-        print("📂 Loading previous snapshot...")
-        previous_snapshot = storage.load_snapshot()
+            try:
+                # Scrape current program
+                print("📥 Fetching current program...")
+                with source_registry.get_scraper(source_info.source_id) as scraper:
+                    current_films = scraper.scrape()
 
-        if previous_snapshot:
-            print(f"📊 Comparing with previous snapshot from {previous_snapshot.timestamp}")
-        else:
-            print("ℹ️  No previous snapshot found (first run)")
+                print(f"✅ Found {len(current_films)} films")
 
-        # Compare snapshots
-        new_films, removed_films, updated_films = storage.compare_snapshots(
-            previous_snapshot, current_films
-        )
+                # Load previous snapshot for this source
+                storage = Storage(storage_dir=storage_dir, source_id=source_info.source_id)
+                print("📂 Loading previous snapshot...")
+                previous_snapshot = storage.load_snapshot()
 
-        # Report changes
-        if new_films or removed_films or updated_films:
-            print("\n🔔 Changes detected:")
-            if new_films:
-                print(f"  ✨ {len(new_films)} new film(s)")
-            if updated_films:
-                print(f"  🔄 {len(updated_films)} updated film(s)")
-            if removed_films:
-                print(f"  ❌ {len(removed_films)} removed film(s)")
+                if previous_snapshot:
+                    print(f"📊 Comparing with previous snapshot from {previous_snapshot.timestamp}")
+                else:
+                    print("ℹ️  No previous snapshot found (first run)")
 
-            # Send notification if enabled
-            if notify:
-                print("\n📤 Sending Telegram notification...")
-                try:
-                    notifier = TelegramNotifier(bot_token=bot_token, chat_id=chat_id)
-                    await notifier.send_update_notification(
-                        new_films, removed_films, updated_films
-                    )
-                    print("✅ Notification sent")
-                except Exception as e:
-                    print(f"❌ Failed to send notification: {e}")
-                    # Don't fail the whole script if notification fails
-        else:
-            print("\nℹ️  No changes detected")
+                # Compare snapshots
+                new_films, removed_films, updated_films = storage.compare_snapshots(
+                    previous_snapshot, current_films
+                )
 
-        # Save current snapshot
-        print("\n💾 Saving current snapshot...")
-        storage.save_snapshot(current_films)
-        print("✅ Snapshot saved")
+                # Report changes
+                if new_films or removed_films or updated_films:
+                    print(f"\n🔔 Changes detected for {source_info.display_name}:")
+                    if new_films:
+                        print(f"  ✨ {len(new_films)} new film(s)")
+                    if updated_films:
+                        print(f"  🔄 {len(updated_films)} updated film(s)")
+                    if removed_films:
+                        print(f"  ❌ {len(removed_films)} removed film(s)")
+
+                    # Send notification
+                    if notifier:
+                        print(f"\n📤 Sending Telegram notification for {source_info.display_name}...")
+                        try:
+                            await notifier.send_update_notification(
+                                source_info.source_id,
+                                source_info.display_name,
+                                source_info.url,
+                                new_films,
+                                removed_films,
+                                updated_films
+                            )
+                            print("✅ Notification sent")
+                        except Exception as e:
+                            print(f"❌ Failed to send notification: {e}")
+                            # Don't fail if notification fails
+                else:
+                    print(f"\nℹ️  No changes detected for {source_info.display_name}")
+
+                # Save current snapshot
+                print(f"\n💾 Saving current snapshot for {source_info.display_name}...")
+                storage.save_snapshot(current_films)
+                print("✅ Snapshot saved")
+
+            except Exception as e:
+                print(f"❌ Error checking {source_info.display_name}: {e}")
+                import traceback
+                traceback.print_exc()
+                # Continue with other sources
 
         print("\n✨ Monitoring complete!")
         return 0
 
     except Exception as e:
-        print(f"\n❌ Error: {e}", file=sys.stderr)
+        print(f"\n❌ Fatal error: {e}", file=sys.stderr)
         import traceback
         traceback.print_exc()
         return 1

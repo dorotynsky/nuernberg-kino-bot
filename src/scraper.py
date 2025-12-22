@@ -6,25 +6,25 @@ import httpx
 from bs4 import BeautifulSoup
 
 from .models import Film, Showtime
+from .base_scraper import BaseCinemaScraper
 
 
-class MeisengeigeScraper:
+class MeisengeigeScraper(BaseCinemaScraper):
     """Scraper for Meisengeige cinema program page."""
 
     BASE_URL = "https://www.cinecitta.de/programm/meisengeige/"
-    TIMEOUT = 30.0
 
-    def __init__(self):
-        """Initialize the scraper."""
-        self.client = httpx.Client(timeout=self.TIMEOUT)
+    def get_source_id(self) -> str:
+        """Return unique source identifier."""
+        return "meisengeige"
 
-    def __enter__(self):
-        """Context manager entry."""
-        return self
+    def get_display_name(self) -> str:
+        """Return human-readable display name."""
+        return "Meisengeige"
 
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        """Context manager exit - close HTTP client."""
-        self.client.close()
+    def get_url(self) -> str:
+        """Return program page URL."""
+        return self.BASE_URL
 
     def fetch_page(self) -> str:
         """
