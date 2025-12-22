@@ -607,6 +607,7 @@ async def setup_bot_commands(bot: Bot):
         # Commands in Russian
         commands_ru = [
             BotCommand("films", "🎥 Показать текущую программу"),
+            BotCommand("sources", "🎬 Управление источниками"),
             BotCommand("start", "✨ Подписаться на уведомления"),
             BotCommand("status", "📊 Проверить статус подписки"),
             BotCommand("language", "🌍 Выбрать язык"),
@@ -616,6 +617,7 @@ async def setup_bot_commands(bot: Bot):
         # Commands in German
         commands_de = [
             BotCommand("films", "🎥 Aktuelles Programm anzeigen"),
+            BotCommand("sources", "🎬 Quellen verwalten"),
             BotCommand("start", "✨ Benachrichtigungen abonnieren"),
             BotCommand("status", "📊 Abonnementstatus prüfen"),
             BotCommand("language", "🌍 Sprache wählen"),
@@ -625,6 +627,7 @@ async def setup_bot_commands(bot: Bot):
         # Commands in English
         commands_en = [
             BotCommand("films", "🎥 Show current program"),
+            BotCommand("sources", "🎬 Manage sources"),
             BotCommand("start", "✨ Subscribe to notifications"),
             BotCommand("status", "📊 Check subscription status"),
             BotCommand("language", "🌍 Change language"),
