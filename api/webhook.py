@@ -1052,10 +1052,9 @@ async def handle_status_command(bot: Bot, chat_id: int) -> str:
         for source_id in user_sources:
             source = CINEMA_SOURCES.get(source_id)
             if source:
-                count = subscriber_manager.get_subscriber_count(source_id)
                 name_key = f'display_name_{lang}'
                 display_name = source.get(name_key, source['display_name'])
-                lines.append(f"• {display_name} ({count} subscribers)")
+                lines.append(f"• {display_name}")
 
         lines.append(f"\n{get_text(chat_id, 'use_sources_cmd')}")
         return "\n".join(lines)
