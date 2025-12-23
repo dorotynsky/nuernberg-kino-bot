@@ -1285,8 +1285,15 @@ async def handle_films_list(bot: Bot, chat_id: int, source_id: str) -> None:
         # Create inline keyboard with film buttons
         keyboard = []
         for film in films:
-            # Create button text with emoji
-            button_text = f"🎥 {film.title}"
+            # Create button text with emoji and age rating
+            age_rating = ""
+            if film.fsk_rating:
+                # Extract age number from FSK rating (e.g., "FSK: 6" -> "6+")
+                fsk_text = film.fsk_rating.replace("FSK:", "").replace("FSK", "").strip()
+                if fsk_text and fsk_text[0].isdigit():
+                    age_rating = f" ({fsk_text}+)"
+
+            button_text = f"🎥 {film.title}{age_rating}"
             # Use source-specific callback data
             callback_data = f"film_{source_id}_{film.film_id}" if film.film_id else f"film_{source_id}_{films.index(film)}"
             keyboard.append([InlineKeyboardButton(button_text, callback_data=callback_data)])
