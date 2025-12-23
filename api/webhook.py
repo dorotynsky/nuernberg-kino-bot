@@ -3,10 +3,8 @@
 import json
 import os
 import re
-import sys
 import time
 from dataclasses import dataclass, field
-from pathlib import Path
 from typing import List, Optional, Set
 
 import httpx
@@ -936,11 +934,12 @@ async def setup_bot_commands(bot: Bot):
         print(f"[WARNING] Failed to set bot commands: {e}")
 
 
-async def handle_start_command(bot: Bot, chat_id: int, user_first_name: str) -> str:
+async def handle_start_command(bot: Bot, chat_id: int, user_first_name: str) -> Optional[str]:
     """
     Handle /start command with language selection.
 
     Args:
+        bot: Bot instance
         chat_id: User's chat ID
         user_first_name: User's first name
 
