@@ -966,16 +966,15 @@ async def handle_start_command(bot: Bot, chat_id: int, user_first_name: str) -> 
         )
         return None
 
-    # User has language preference or is returning - proceed with subscription
-    is_new_subscriber = subscriber_manager.add_subscriber(chat_id)
-
-    if is_new_subscriber:
-        # First time subscriber - send welcome photo
-        await send_welcome_message(bot, chat_id, user_first_name)
-        return None
-    else:
+    # User has language preference - send welcome message without auto-subscription
+    # Check if user is already subscribed to any source
+    if subscriber_manager.is_subscribed(chat_id):
         # Already subscribed
         return get_text(chat_id, 'already_subscribed', name=user_first_name)
+    else:
+        # New user - send welcome message without auto-subscribing
+        await send_welcome_message(bot, chat_id, user_first_name)
+        return None
 
 
 async def send_welcome_message(bot: Bot, chat_id: int, user_first_name: str):
@@ -1459,8 +1458,7 @@ async def process_update(update_data: dict) -> dict:
                     text=get_text(chat_id, 'language_set')
                 )
 
-                # Subscribe user and send welcome message
-                subscriber_manager.add_subscriber(chat_id)
+                # Send welcome message without auto-subscribing
                 user = query.from_user
                 user_first_name = user.first_name or "there"
                 await send_welcome_message(bot, chat_id, user_first_name)
