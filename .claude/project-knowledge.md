@@ -135,7 +135,7 @@ This file provides Claude with essential context about the Nürnberg Kino Bot pr
 
 ### Why Single-File Webhook?
 - Vercel serverless function works best with single entry point
-- Reduces cold start time
+- Reduces cold start time (lazy MongoDB init, no connections at import)
 - All bot logic contained in `api/webhook.py`
 
 ### Why Separate Monitoring Script?
@@ -185,7 +185,7 @@ This file provides Claude with essential context about the Nürnberg Kino Bot pr
 - Integration tests for bot commands (mock Telegram API)
 - End-to-end tests for monitoring script
 
-## Current Status (v1.1.0)
+## Current Status (v1.2.0)
 
 **Production**: ✅ Fully deployed and operational
 
@@ -195,13 +195,17 @@ This file provides Claude with essential context about the Nürnberg Kino Bot pr
 - ✅ Rich film information with detail scraping
 - ✅ Per-user command menu
 - ✅ Interactive inline keyboards
-- ✅ Daily notifications via GitHub Actions
+- ✅ Daily notifications via GitHub Actions (subscribers from MongoDB)
 - ✅ Persistent storage with MongoDB
+- ✅ Lazy MongoDB init to prevent Vercel cold start timeout
+- ✅ Daily MongoDB keep-alive ping (prevents Atlas free tier pause)
 
 **Known Limitations**:
 - Kinderkino detail fetching adds latency (~1-2s per film)
-- Vercel free tier has execution time limits
+- Vercel free tier has execution time limits (10s)
 - GitHub Actions cache has 7-day retention
+- MongoDB Atlas free tier pauses after 60 days of inactivity (mitigated by daily ping)
+- Telegram photo caption limit is 1024 chars (descriptions truncated to 600 chars)
 
 ## Communication Style
 
@@ -237,16 +241,22 @@ poetry run ruff check .
 
 ## Recent Major Changes
 
-1. **Renamed from Meisengeige Bot** (Dec 2024)
+1. **Fixed webhook and notifications** (Mar 2026)
+   - Lazy MongoDB init: shared singleton, no connections at module load
+   - Monitoring now reads subscribers from MongoDB (was file-based)
+   - Daily MongoDB keep-alive ping prevents Atlas free tier pause
+   - Film detail descriptions truncated to 600 chars (Telegram caption limit)
+
+2. **Renamed from Meisengeige Bot** (Dec 2024)
    - Updated all references to "Nürnberg Kino Bot"
    - New MongoDB database: `nuernberg_kino_bot`
    - Updated repository name on GitHub
 
-2. **Added Kinderkino Detail Scraping** (Dec 2024)
+3. **Added Kinderkino Detail Scraping** (Dec 2024)
    - Fetches detail pages for full film info
    - Extracts FSK, duration, director, full description
 
-3. **Fixed Command Menu Language** (Dec 2024)
+4. **Fixed Command Menu Language** (Dec 2024)
    - Now uses per-user command scope
    - Updates immediately on language change
 
@@ -254,6 +264,6 @@ poetry run ruff check .
 
 - **Repository**: https://github.com/dorotynsky/nuernberg-kino-bot
 - **Deployment**: Vercel (auto-deploy from main)
-- **Monitoring**: GitHub Actions (daily at 9 AM UTC)
+- **Monitoring**: GitHub Actions (daily at 9:10 AM UTC / 10:10 CET winter)
 - **Meisengeige Program**: https://www.cinecitta.de/programm/meisengeige/
 - **Kinderkino Program**: https://www.kunstkulturquartier.de/filmhaus/programm/kinderkino

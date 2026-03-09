@@ -14,13 +14,14 @@ Monitor cinema programs in Nuremberg (Meisengeige at Cinecitta and Kinderkino at
 - ✅ Daily monitoring via GitHub Actions
 - ✅ Development environment (Python 3.14.2 locally, 3.12 in CI)
 - ✅ Repository: https://github.com/dorotynsky/nuernberg-kino-bot
+- ✅ MongoDB keep-alive ping to prevent Atlas free tier pause
 - **Status:** Production-ready with full feature set! 🎉🎬
 
 ## Architecture
 
 ### Deployment
 - **Webhook API**: Vercel serverless function (`api/webhook.py`)
-- **Monitoring Script**: GitHub Actions (daily at 9:00 AM UTC)
+- **Monitoring Script**: GitHub Actions (daily at 9:10 AM UTC)
 - **Database**: MongoDB Atlas for persistent storage
 - **Bot**: Telegram Bot API with python-telegram-bot
 
@@ -91,7 +92,13 @@ Each event on https://www.kunstkulturquartier.de/filmhaus/programm/kinderkino co
 - **Smart caching**: 5-minute cache per source to reduce API calls
 - **Notifications**: Daily checks with poster images and showtime details
 
-## Recent Changes (v1.1.0)
+## Recent Changes (v1.2.0)
+- ✅ Fixed webhook crash: lazy MongoDB init to prevent Vercel cold start timeout
+- ✅ Switched monitoring notifications to MongoDB subscribers (was file-based)
+- ✅ Added daily MongoDB keep-alive ping to prevent Atlas free tier pause
+- ✅ Fixed film detail error for long Kinderkino descriptions (Telegram caption limit)
+
+## Previous Changes (v1.1.0)
 - ✅ Renamed to "Nürnberg Kino Bot" from "Meisengeige Bot"
 - ✅ Added cinema source selection for /films command
 - ✅ Implemented Kinderkino detail page scraping for rich information
@@ -134,7 +141,7 @@ Each event on https://www.kunstkulturquartier.de/filmhaus/programm/kinderkino co
 - `.mise.toml` - mise configuration (Python 3.14.2)
 - `.python-version` - Python version file (3.14.2)
 - `pyproject.toml` - Poetry configuration (Python ^3.14)
-- `vercel.json` - Vercel deployment configuration
+- `api/requirements.txt` - Vercel deployment dependencies
 
 ## Communication Guidelines
 - Chat communication: Russian

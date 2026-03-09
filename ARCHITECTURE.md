@@ -39,7 +39,7 @@
 
 ┌─────────────────────────────────┐
 │   GitHub Actions                 │
-│   (Daily at 9:00 AM UTC)         │
+│   (Daily at 9:10 AM UTC)         │
 │                                  │
 │  1. Scrape cinema websites       │
 │  2. Compare with cached state    │
@@ -66,14 +66,15 @@
 6. Response sent back to user via Telegram API
 
 ### Monitoring Flow
-1. GitHub Actions triggers daily at 9:00 AM UTC
+1. GitHub Actions triggers daily at 9:10 AM UTC
 2. For each cinema source:
    - Fetch current program from website
    - Load previous snapshot from cache
    - Compare to detect changes
-   - Send notifications to subscribed users
+   - Send notifications to subscribed users (from MongoDB)
    - Save new snapshot to cache
 3. Cache persisted via GitHub Actions cache
+4. MongoDB keep-alive ping to prevent Atlas free tier pause
 
 ## Core Components
 
@@ -270,7 +271,7 @@ class ProgramSnapshot:
 
 ### Webhook Performance
 - Single-file deployment reduces cold start time
-- Minimal dependencies
+- Lazy MongoDB initialization (shared singleton, connects on first request)
 - Caching reduces external API calls
 
 ### Scraping Performance
@@ -279,7 +280,8 @@ class ProgramSnapshot:
 - Efficient HTML parsing with BeautifulSoup
 
 ### MongoDB Optimization
-- Indexed collections (chat_id as unique key)
+- Shared singleton MongoClient with lazy initialization
+- serverSelectionTimeoutMS=5000 to fail fast on connection issues
 - Minimal data per document
 - Efficient queries (find by chat_id)
 
@@ -293,9 +295,9 @@ class ProgramSnapshot:
 
 ### GitHub Actions (Monitoring)
 - Workflow in `.github/workflows/monitor.yml`
-- Scheduled: Daily at 9:00 AM UTC
+- Scheduled: Daily at 9:10 AM UTC (10:10 CET winter time)
 - Manual trigger: `workflow_dispatch`
-- Secrets: `TELEGRAM_BOT_TOKEN`, `MONGODB_URI`
+- Secrets: `TELEGRAM_BOT_TOKEN`, `MONGODB_URI`, `TELEGRAM_CHAT_ID`
 
 ## Monitoring & Observability
 

@@ -239,7 +239,7 @@ Set in Vercel dashboard:
 ### GitHub Actions (Monitoring)
 
 **Automatic Execution**:
-- Runs daily at 9:00 AM UTC
+- Runs daily at 9:10 AM UTC (10:10 CET winter time)
 - Configured in `.github/workflows/monitor.yml`
 
 **Manual Trigger**:
@@ -251,6 +251,7 @@ Set in Vercel dashboard:
 Set in GitHub repo settings:
 - `TELEGRAM_BOT_TOKEN`
 - `MONGODB_URI`
+- `TELEGRAM_CHAT_ID` (optional, legacy)
 
 ## Common Development Tasks
 
@@ -415,6 +416,7 @@ keyboard = [
 ### Reduce Cold Start Time
 - Keep dependencies minimal
 - Use single-file webhook (`api/webhook.py`)
+- Lazy MongoDB initialization (shared singleton, no connections at import time)
 - Avoid heavy imports at module level
 
 ### Reduce Scraping Time
@@ -423,8 +425,8 @@ keyboard = [
 - Parallel scraping for multiple sources
 
 ### Reduce Database Queries
-- Index MongoDB collections on `chat_id`
-- Batch queries where possible
+- Shared singleton MongoClient (one connection for all managers)
+- serverSelectionTimeoutMS=5000 to fail fast
 - Cache user preferences in memory (with TTL)
 
 ## Communication Guidelines

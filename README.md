@@ -31,7 +31,8 @@ Cinema program monitoring bot for Nuremberg with Telegram notifications.
 
 3. Set up environment variables:
    - `TELEGRAM_BOT_TOKEN`: Your Telegram bot token
-   - `TELEGRAM_CHAT_ID`: Your Telegram chat ID
+   - `MONGODB_URI`: MongoDB Atlas connection string
+   - `TELEGRAM_CHAT_ID`: Your Telegram chat ID (optional, legacy)
 
 ### Local Development
 
@@ -56,9 +57,10 @@ poetry run python -m src.run_bot
 
 ## GitHub Actions
 
-The bot runs daily at 9:00 AM UTC via GitHub Actions. Configure secrets in repository settings:
+The bot runs daily at 9:10 AM UTC (10:10 CET winter time) via GitHub Actions. Configure secrets in repository settings:
 - `TELEGRAM_BOT_TOKEN`
-- `MONGODB_URI` (for persistent storage)
+- `MONGODB_URI`
+- `TELEGRAM_CHAT_ID` (optional, legacy)
 
 ## License
 
