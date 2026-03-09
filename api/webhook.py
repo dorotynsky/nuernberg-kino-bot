@@ -1389,7 +1389,12 @@ async def handle_film_details_callback(bot: Bot, chat_id: int, film_data: str) -
         caption += "\n"
 
         if film.description:
-            caption += f"{film.description}\n\n"
+            desc = film.description
+            # Telegram photo caption limit is 1024 chars — leave room for showtimes
+            max_desc = 600
+            if len(desc) > max_desc:
+                desc = desc[:max_desc - 3] + "..."
+            caption += f"{desc}\n\n"
 
         if film.showtimes:
             caption += f"{get_text(chat_id, 'showtimes')}\n"
@@ -1408,13 +1413,22 @@ async def handle_film_details_callback(bot: Bot, chat_id: int, film_data: str) -
 
         # Send photo with details
         if film.poster_url:
-            await bot.send_photo(
-                chat_id=chat_id,
-                photo=film.poster_url,
-                caption=caption,
-                parse_mode='HTML',
-                reply_markup=reply_markup
-            )
+            try:
+                await bot.send_photo(
+                    chat_id=chat_id,
+                    photo=film.poster_url,
+                    caption=caption,
+                    parse_mode='HTML',
+                    reply_markup=reply_markup
+                )
+            except TelegramError:
+                # Fallback if photo/caption fails (e.g. caption too long, invalid URL)
+                await bot.send_message(
+                    chat_id=chat_id,
+                    text=caption,
+                    parse_mode='HTML',
+                    reply_markup=reply_markup
+                )
         else:
             await bot.send_message(
                 chat_id=chat_id,
