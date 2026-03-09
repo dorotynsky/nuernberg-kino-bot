@@ -113,6 +113,14 @@ async def main(
                 traceback.print_exc()
                 # Continue with other sources
 
+        # Ping MongoDB to prevent Atlas free tier from pausing (60-day inactivity limit)
+        try:
+            from .subscribers import SubscriberManager
+            SubscriberManager().get_all_subscribers()
+            print("📡 MongoDB keep-alive ping OK")
+        except Exception as e:
+            print(f"⚠️  MongoDB ping failed: {e}")
+
         print("\n✨ Monitoring complete!")
         return 0
 
