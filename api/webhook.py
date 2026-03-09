@@ -780,11 +780,7 @@ def _parse_kinderkino_event(card) -> Optional[Film]:
         if img and img.get('src'):
             poster_url = img['src']
             if not poster_url.startswith('http'):
-                # Check if it's already a full URL with domain
-                if poster_url.startswith('http'):
-                    pass  # Already full URL
-                else:
-                    poster_url = f"https://www.kunstkulturquartier.de{poster_url}" if poster_url.startswith('/') else poster_url
+                poster_url = f"https://www.kunstkulturquartier.de{poster_url}" if poster_url.startswith('/') else poster_url
 
         # Extract date/time and venue information
         date_time_text = None
@@ -975,9 +971,6 @@ async def handle_start_command(bot: Bot, chat_id: int, user_first_name: str) -> 
     Returns:
         Message to send (or None if photo was sent)
     """
-    # Check if user has language preference
-    current_lang = language_manager.get_language(chat_id)
-
     # If this is truly first time (no language set and not subscribed), show language selection
     if not language_manager.has_language_set(chat_id) and not subscriber_manager.is_subscribed(chat_id):
         # Show language selection buttons
