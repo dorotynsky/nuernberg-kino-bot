@@ -60,15 +60,20 @@ class Film:
     film_id: Optional[str] = None
 
 
-# MongoDB connection helper
-def get_mongodb_database():
-    """Get MongoDB database instance."""
-    mongodb_uri = os.getenv('MONGODB_URI')
-    if not mongodb_uri:
-        raise ValueError("MONGODB_URI environment variable not set")
+# MongoDB connection helper — lazy singleton
+_mongo_db = None
 
-    client = MongoClient(mongodb_uri)
-    return client['nuernberg_kino_bot']
+
+def get_mongodb_database():
+    """Get MongoDB database instance (shared singleton, lazy init)."""
+    global _mongo_db
+    if _mongo_db is None:
+        mongodb_uri = os.getenv('MONGODB_URI')
+        if not mongodb_uri:
+            raise ValueError("MONGODB_URI environment variable not set")
+        client = MongoClient(mongodb_uri, serverSelectionTimeoutMS=5000)
+        _mongo_db = client['nuernberg_kino_bot']
+    return _mongo_db
 
 
 # Inline SubscriberManager (MongoDB version with multi-source support)
@@ -76,11 +81,16 @@ class SubscriberManager:
     """Manages the list of subscribers for notifications using MongoDB."""
 
     def __init__(self):
-        """Initialize subscriber manager with MongoDB."""
-        self.db = get_mongodb_database()
-        self.collection = self.db['subscribers']
-        # Create index on chat_id for faster queries
-        self.collection.create_index('chat_id', unique=True)
+        """Initialize subscriber manager with lazy MongoDB access."""
+        self._db = None
+        self._collection = None
+
+    @property
+    def collection(self):
+        if self._collection is None:
+            self._db = get_mongodb_database()
+            self._collection = self._db['subscribers']
+        return self._collection
 
     def add_subscription(self, chat_id: int, source_id: str) -> bool:
         """Add subscription to specific source."""
@@ -174,11 +184,14 @@ class LanguageManager:
     """Manages user language preferences using MongoDB."""
 
     def __init__(self):
-        """Initialize language manager with MongoDB."""
-        self.db = get_mongodb_database()
-        self.collection = self.db['languages']
-        # Create index on chat_id for faster queries
-        self.collection.create_index('chat_id', unique=True)
+        """Initialize language manager with lazy MongoDB access."""
+        self._collection = None
+
+    @property
+    def collection(self):
+        if self._collection is None:
+            self._collection = get_mongodb_database()['languages']
+        return self._collection
 
     def set_language(self, chat_id: int, language: str) -> None:
         """Set language preference for a user."""
@@ -203,11 +216,14 @@ class UserVersionManager:
     """Manages user version tracking for update notifications."""
 
     def __init__(self):
-        """Initialize version manager with MongoDB."""
-        self.db = get_mongodb_database()
-        self.collection = self.db['user_versions']
-        # Create index on chat_id for faster queries
-        self.collection.create_index('chat_id', unique=True)
+        """Initialize version manager with lazy MongoDB access."""
+        self._collection = None
+
+    @property
+    def collection(self):
+        if self._collection is None:
+            self._collection = get_mongodb_database()['user_versions']
+        return self._collection
 
     def set_version(self, chat_id: int, version: str) -> None:
         """Set the bot version that user has seen."""
