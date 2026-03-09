@@ -4,9 +4,9 @@ import os
 from typing import List, Set
 from telegram import Bot
 from telegram.error import TelegramError
+from pymongo import MongoClient
 
 from .models import Film
-from .subscribers import SubscriberManager
 
 
 class TelegramNotifier:
@@ -26,22 +26,22 @@ class TelegramNotifier:
             raise ValueError("TELEGRAM_BOT_TOKEN not provided")
 
         self.bot = Bot(token=self.bot_token)
-        self.subscriber_manager = SubscriberManager()
 
-        # For backward compatibility: if chat_id is provided, add it as subscriber
-        if chat_id:
-            try:
-                self.subscriber_manager.add_subscriber(int(chat_id))
-            except ValueError:
-                pass
+        # Connect to MongoDB for subscriber data (same DB as webhook)
+        mongodb_uri = os.getenv('MONGODB_URI')
+        if not mongodb_uri:
+            raise ValueError("MONGODB_URI environment variable not set")
+        client = MongoClient(mongodb_uri, serverSelectionTimeoutMS=5000)
+        self._db = client['nuernberg_kino_bot']
+        self._subscribers_collection = self._db['subscribers']
 
-        # Also check environment variable
-        env_chat_id = os.getenv("TELEGRAM_CHAT_ID")
-        if env_chat_id:
-            try:
-                self.subscriber_manager.add_subscriber(int(env_chat_id))
-            except ValueError:
-                pass
+    def get_subscribers_for_source(self, source_id: str) -> Set[int]:
+        """Get all subscriber chat IDs for a specific source from MongoDB."""
+        docs = self._subscribers_collection.find(
+            {'sources': source_id},
+            {'chat_id': 1}
+        )
+        return {doc['chat_id'] for doc in docs}
 
     async def send_update_notification(
         self,
@@ -67,8 +67,8 @@ class TelegramNotifier:
             print("No changes detected, skipping notification")
             return
 
-        # Get subscribers for this specific source
-        subscribers = self.subscriber_manager.get_subscribers_for_source(source_id)
+        # Get subscribers for this specific source from MongoDB
+        subscribers = self.get_subscribers_for_source(source_id)
 
         if not subscribers:
             print(f"No subscribers for {source_display_name}, skipping notification")

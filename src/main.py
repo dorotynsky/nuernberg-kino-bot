@@ -1,6 +1,7 @@
 """Main script for multi-source cinema program monitoring."""
 
 import asyncio
+import os
 import sys
 from typing import Optional
 from dotenv import load_dotenv
@@ -115,9 +116,12 @@ async def main(
 
         # Ping MongoDB to prevent Atlas free tier from pausing (60-day inactivity limit)
         try:
-            from .subscribers import SubscriberManager
-            SubscriberManager().get_all_subscribers()
-            print("📡 MongoDB keep-alive ping OK")
+            from pymongo import MongoClient
+            mongodb_uri = os.getenv('MONGODB_URI')
+            if mongodb_uri:
+                client = MongoClient(mongodb_uri, serverSelectionTimeoutMS=5000)
+                client['nuernberg_kino_bot']['subscribers'].find_one()
+                print("📡 MongoDB keep-alive ping OK")
         except Exception as e:
             print(f"⚠️  MongoDB ping failed: {e}")
 
