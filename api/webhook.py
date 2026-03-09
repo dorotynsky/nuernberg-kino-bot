@@ -3,18 +3,22 @@
 import json
 import logging
 import os
-import re
+import sys
 import time
-from dataclasses import dataclass, field
 from typing import List, Optional, Set
+
+# Add project root to path so we can import from src/
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 logger = logging.getLogger(__name__)
 
-import httpx
-from bs4 import BeautifulSoup
 from pymongo import MongoClient
 from telegram import Update, Bot, BotCommand, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.error import TelegramError
+
+from src.models import Film
+from src.scraper import MeisengeigeScraper
+from src.filmhaus_scraper import FilmhausScraper
 
 
 # Cinema source definitions
@@ -38,29 +42,6 @@ CINEMA_SOURCES = {
         'venue': 'Filmhaus Nürnberg',
     }
 }
-
-
-# Data models for films
-@dataclass
-class Showtime:
-    """Represents a single film showtime."""
-    date: str
-    time: str
-    room: str
-    language: Optional[str] = None
-
-
-@dataclass
-class Film:
-    """Represents a film with all its information."""
-    title: str
-    genres: List[str] = field(default_factory=list)
-    fsk_rating: Optional[str] = None
-    duration: Optional[int] = None
-    description: Optional[str] = None
-    poster_url: Optional[str] = None
-    showtimes: List[Showtime] = field(default_factory=list)
-    film_id: Optional[str] = None
 
 
 # MongoDB connection helper — lazy singleton
@@ -476,30 +457,10 @@ def fetch_current_films(source_id: str = 'meisengeige') -> List[Film]:
 
 
 def fetch_meisengeige_films() -> List[Film]:
-    """
-    Fetch films from Meisengeige website.
-
-    Returns:
-        List of Film objects
-    """
-    BASE_URL = "https://www.cinecitta.de/programm/meisengeige/"
-    TIMEOUT = 30.0
-
+    """Fetch films from Meisengeige website using src/ scraper."""
     try:
-        with httpx.Client(timeout=TIMEOUT) as client:
-            response = client.get(BASE_URL)
-            response.raise_for_status()
-            html = response.text
-
-        soup = BeautifulSoup(html, 'html.parser')
-        film_containers = soup.find_all('li', class_='filmapi-container__list--li')
-
-        films = []
-        for container in film_containers:
-            film = _parse_single_film(container)
-            if film:
-                films.append(film)
-
+        with MeisengeigeScraper() as scraper:
+            films = scraper.scrape()
         logger.debug(f"Fetched {len(films)} films from Meisengeige")
         return films
     except Exception as e:
@@ -507,365 +468,16 @@ def fetch_meisengeige_films() -> List[Film]:
         return []
 
 
-def _parse_single_film(container) -> Optional[Film]:
-    """Parse a single film from HTML container."""
-    try:
-        film_id = container.get('id', '').replace('film-', '') if container.get('id') else None
-
-        title_elem = container.find('h3', class_='text-white')
-        title = title_elem.text.strip() if title_elem else None
-        if not title:
-            return None
-
-        genre_elems = container.find_all('span', class_='px-2 bg-petrol-50')
-        genres = [genre.text.strip() for genre in genre_elems]
-
-        fsk_elem = container.find('span', class_=re.compile('age-rating--'))
-        fsk_rating = fsk_elem.text.strip() if fsk_elem else None
-
-        duration = None
-        duration_elem = container.find('i', class_='icon-clock')
-        if duration_elem and duration_elem.parent:
-            duration_text = duration_elem.parent.text.strip()
-            duration_match = re.search(r'(\d+)\s*min', duration_text)
-            if duration_match:
-                duration = int(duration_match.group(1))
-
-        desc_elem = container.find('p', class_='leading-tight')
-        description = desc_elem.text.strip() if desc_elem else None
-
-        poster_url = None
-        img_elem = container.find('img')
-        if img_elem and img_elem.get('src'):
-            poster_url = img_elem['src']
-            if not poster_url.startswith('http'):
-                poster_url = f"https://www.cinecitta.de{poster_url}"
-
-        showtimes = _parse_showtimes(container)
-
-        return Film(
-            title=title,
-            genres=genres,
-            fsk_rating=fsk_rating,
-            duration=duration,
-            description=description,
-            poster_url=poster_url,
-            film_id=film_id,
-            showtimes=showtimes,
-        )
-    except Exception as e:
-        logger.error(f"Error parsing film: {e}")
-        return None
-
-
-def _parse_showtimes(container) -> List[Showtime]:
-    """Parse showtimes from film container."""
-    showtimes = []
-    showtime_section = container.find('div', class_='show_playing_times__content--inner')
-    if not showtime_section:
-        return showtimes
-
-    table = showtime_section.find('table', class_='film-list-table')
-    if not table:
-        return showtimes
-
-    dates = []
-    thead = table.find('thead')
-    if thead:
-        header_cells = thead.find_all('th')
-        for cell in header_cells[1:]:
-            date_text = cell.get_text(strip=True)
-            if date_text:
-                dates.append(date_text)
-
-    if not dates:
-        return showtimes
-
-    tbody = table.find('tbody')
-    if not tbody:
-        return showtimes
-
-    rows = tbody.find_all('tr')
-    for row in rows:
-        room_header = row.find('th')
-        if not room_header:
-            continue
-
-        room_div = room_header.find('div', class_='font-semibold')
-        room = room_div.get_text(strip=True) if room_div else "Unknown"
-
-        language = None
-        lang_div = room_header.find('div', class_='release-types')
-        if lang_div:
-            lang_span = lang_div.find('span')
-            if lang_span:
-                lang_text = lang_span.get_text(strip=True)
-                if lang_text:
-                    language = lang_text
-
-        time_cells = row.find_all('td')
-
-        for idx, cell in enumerate(time_cells):
-            if idx >= len(dates):
-                break
-
-            time_link = cell.find('a', class_='performance-link')
-            if time_link:
-                time_span = time_link.find('span', class_='link-text')
-                if time_span:
-                    time_text = time_span.get_text(strip=True)
-                    if time_text and re.match(r'\d{1,2}:\d{2}', time_text):
-                        showtimes.append(
-                            Showtime(
-                                date=dates[idx],
-                                time=time_text,
-                                room=room,
-                                language=language,
-                            )
-                        )
-
-    return showtimes
-
-
 def fetch_kinderkino_films() -> List[Film]:
-    """
-    Fetch films from Kinderkino (Filmhaus) website.
-
-    Returns:
-        List of Film objects
-    """
-    BASE_URL = "https://www.kunstkulturquartier.de/filmhaus/programm/kinderkino"
-    TIMEOUT = 30.0
-
+    """Fetch films from Kinderkino (Filmhaus) website using src/ scraper."""
     try:
-        with httpx.Client(timeout=TIMEOUT) as client:
-            response = client.get(BASE_URL)
-            response.raise_for_status()
-            html = response.text
-
-        soup = BeautifulSoup(html, 'html.parser')
-        # Find event cards - they have 'kachel' class
-        cards = soup.find_all('div', class_='kachel')
-
-        films = []
-        for card in cards:
-            film = _parse_kinderkino_event(card)
-            if film:
-                films.append(film)
-
+        with FilmhausScraper() as scraper:
+            films = scraper.scrape()
         logger.debug(f"Fetched {len(films)} films from Kinderkino")
         return films
     except Exception as e:
         logger.error(f"Failed to fetch Kinderkino films: {e}")
         return []
-
-
-def _fetch_kinderkino_detail(detail_url: str) -> Optional[dict]:
-    """
-    Fetch and parse Kinderkino detail page for additional film information.
-
-    Args:
-        detail_url: Full URL to the detail page
-
-    Returns:
-        Dictionary with film details or None if parsing fails
-    """
-    try:
-        with httpx.Client(timeout=30.0) as client:
-            response = client.get(detail_url, follow_redirects=True)
-            response.raise_for_status()
-            html = response.text
-
-        soup = BeautifulSoup(html, 'html.parser')
-        main_content = soup.find('main')
-        if not main_content:
-            return None
-
-        # Extract full description (first paragraph that's not pricing)
-        description = None
-        for p in main_content.find_all('p'):
-            text = p.get_text(strip=True)
-            if text and 'Eintritt' not in text and len(text) > 50:
-                description = text
-                break
-
-        # Parse all metadata from the text
-        all_text = main_content.get_text() if main_content else ''
-
-        # Extract duration
-        duration = None
-        duration_match = re.search(r'Länge:\s*(\d+)\s*Min', all_text, re.IGNORECASE)
-        if duration_match:
-            duration = int(duration_match.group(1))
-
-        # Extract FSK rating (extract just the number)
-        fsk_rating = None
-        fsk_match = re.search(r'FSK:\s*ab\s*(\d+)', all_text, re.IGNORECASE)
-        if fsk_match:
-            age = fsk_match.group(1)
-            fsk_rating = f"FSK: {age}"
-
-        # Extract genre
-        genre = None
-        genre_match = re.search(r'(Animation|Dokumentarfilm|Drama|Komödie|Thriller|Action|Fantasy|Abenteuer)(?:\s|Land:|Länge:|$)', all_text, re.IGNORECASE)
-        if genre_match:
-            genre = genre_match.group(1)
-
-        # Extract country
-        country = None
-        country_match = re.search(r'Land:\s*([^\n]+?)(?:Jahr:|Regie:|$)', all_text, re.IGNORECASE)
-        if country_match:
-            country = country_match.group(1).strip()
-
-        # Extract year
-        year = None
-        year_match = re.search(r'Jahr:\s*(\d{4})', all_text)
-        if year_match:
-            year = year_match.group(1)
-
-        # Extract director
-        director = None
-        director_match = re.search(r'Regie:\s*([^\n]+?)(?:Animation|Länge:|Sprache:|$)', all_text, re.IGNORECASE)
-        if director_match:
-            director = director_match.group(1).strip()
-
-        return {
-            'description': description,
-            'duration': duration,
-            'fsk_rating': fsk_rating,
-            'genre': genre,
-            'country': country,
-            'year': year,
-            'director': director,
-        }
-
-    except Exception as e:
-        logger.error(f"Failed to parse Kinderkino detail page: {e}")
-        return None
-
-
-def _parse_kinderkino_event(card) -> Optional[Film]:
-    """
-    Parse a single Kinderkino event from its container element.
-    Fetches detail page for enriched information.
-
-    Args:
-        card: BeautifulSoup element containing event data
-
-    Returns:
-        Film object or None if parsing fails
-    """
-    try:
-        # Extract title and detail URL from detailLink
-        title_link = card.find('a', class_='detailLink')
-        if not title_link:
-            return None
-        title = title_link.get_text(strip=True)
-        detail_url = title_link.get('href')
-
-        # Extract poster image
-        poster_url = None
-        img = card.find('img')
-        if img and img.get('src'):
-            poster_url = img['src']
-            if not poster_url.startswith('http'):
-                poster_url = f"https://www.kunstkulturquartier.de{poster_url}" if poster_url.startswith('/') else poster_url
-
-        # Extract date/time and venue information
-        date_time_text = None
-        venue = "Filmhaus Nürnberg"
-
-        # Look for text containing date pattern (e.g., "Mo / 22.12.2025 / 15:00 Uhr")
-        for text_elem in card.find_all(string=True):
-            text = text_elem.strip()
-            if re.search(r'\d{2}\.\d{2}\.\d{4}', text):
-                date_time_text = text
-                break
-
-        # Try to extract venue more precisely if available
-        venue_div = card.find('div', string=re.compile(r'Filmhaus'))
-        if venue_div:
-            venue_text = venue_div.get_text(strip=True)
-            if venue_text:
-                venue = venue_text
-
-        showtimes = []
-        if date_time_text:
-            showtime = _parse_kinderkino_datetime(date_time_text, venue)
-            if showtime:
-                showtimes.append(showtime)
-
-        # Fetch detail page for enriched information
-        description = None
-        fsk_rating = None
-        duration = None
-        genres = ["Kinderkino"]
-
-        if detail_url:
-            try:
-                full_detail_url = f"https://www.kunstkulturquartier.de{detail_url}" if detail_url.startswith('/') else detail_url
-                detail_info = _fetch_kinderkino_detail(full_detail_url)
-                if detail_info:
-                    description = detail_info.get('description')
-                    fsk_rating = detail_info.get('fsk_rating')
-                    duration = detail_info.get('duration')
-                    if detail_info.get('genre'):
-                        genres = [detail_info['genre'], "Kinderkino"]
-            except Exception as e:
-                logger.warning(f"Failed to fetch detail for {title}: {e}")
-
-        return Film(
-            title=title,
-            genres=genres,
-            fsk_rating=fsk_rating,
-            duration=duration,
-            description=description,
-            poster_url=poster_url,
-            film_id=None,
-            showtimes=showtimes,
-        )
-
-    except Exception as e:
-        logger.error(f"Error parsing Kinderkino event: {e}")
-        return None
-
-
-def _parse_kinderkino_datetime(text: str, venue: str) -> Optional[Showtime]:
-    """
-    Parse date/time from Filmhaus format.
-
-    Args:
-        text: Date/time string (e.g., 'Mo / 22.12.2025 / 15:00 Uhr')
-        venue: Venue name
-
-    Returns:
-        Showtime object or None if parsing fails
-    """
-    try:
-        # Extract components: day / DD.MM.YYYY / HH:MM Uhr
-        match = re.search(r'(\w+)\s*/\s*(\d{2}\.\d{2}\.?\d*)\s*/\s*(\d{2}:\d{2})', text)
-        if not match:
-            return None
-
-        day_of_week, date_str, time_str = match.groups()
-
-        # Convert date format to match Meisengeige format
-        # From "22.12.2025" to "Mo.22.12"
-        date_parts = date_str.split('.')
-        if len(date_parts) >= 2:
-            formatted_date = f"{day_of_week}.{date_parts[0]}.{date_parts[1]}"
-        else:
-            formatted_date = f"{day_of_week}.{date_str}"
-
-        return Showtime(
-            date=formatted_date,
-            time=time_str,
-            room=venue,
-            language=None,  # Can be parsed if available
-        )
-    except Exception as e:
-        logger.error(f"Error parsing datetime '{text}': {e}")
-        return None
 
 
 # Initialize subscriber manager
