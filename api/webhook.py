@@ -71,8 +71,11 @@ def get_mongodb_database():
         mongodb_uri = os.getenv('MONGODB_URI')
         if not mongodb_uri:
             raise ValueError("MONGODB_URI environment variable not set")
-        client = MongoClient(mongodb_uri, serverSelectionTimeoutMS=5000)
-        _mongo_db = client['nuernberg_kino_bot']
+        try:
+            client = MongoClient(mongodb_uri, serverSelectionTimeoutMS=5000)
+            _mongo_db = client['nuernberg_kino_bot']
+        except Exception:
+            raise ConnectionError("Failed to connect to MongoDB")
     return _mongo_db
 
 
@@ -240,7 +243,7 @@ class UserVersionManager:
 
 
 # Bot version and update messages
-BOT_VERSION = '1.1.0'
+BOT_VERSION = '1.2.0'
 
 VERSION_UPDATES = {
     '1.1.0': {
@@ -327,6 +330,9 @@ TRANSLATIONS = {
         'sources_header': '🎬 <b>Источники программ кинотеатров</b>',
         'sources_your_subscriptions': '<b>Ваши подписки:</b>',
         'sources_available_cinemas': '<b>Доступные кинотеатры:</b>',
+        'duration_min': 'мин',
+        'more_showtimes': '... и ещё {count} сеансов',
+        'film_details_error': '❌ Ошибка при загрузке деталей фильма. Попробуйте снова.',
     },
     'de': {
         'choose_language': '🌍 Sprache wählen',
@@ -369,6 +375,9 @@ TRANSLATIONS = {
         'sources_header': '🎬 <b>Kinoprogramm-Quellen</b>',
         'sources_your_subscriptions': '<b>Ihre Abonnements:</b>',
         'sources_available_cinemas': '<b>Verfügbare Kinos:</b>',
+        'duration_min': 'Min',
+        'more_showtimes': '... und {count} weitere Vorstellungen',
+        'film_details_error': '❌ Filmdetails konnten nicht geladen werden. Bitte versuchen Sie es erneut.',
     },
     'en': {
         'choose_language': '🌍 Choose language',
@@ -411,6 +420,9 @@ TRANSLATIONS = {
         'sources_header': '🎬 <b>Cinema Program Sources</b>',
         'sources_your_subscriptions': '<b>Your subscriptions:</b>',
         'sources_available_cinemas': '<b>Available cinemas:</b>',
+        'duration_min': 'min',
+        'more_showtimes': '... and {count} more showtimes',
+        'film_details_error': '❌ Failed to load film details. Please try again.',
     }
 }
 
@@ -428,6 +440,7 @@ def get_text(chat_id: int, key: str, **kwargs) -> str:
 _films_cache: Optional[List[Film]] = None
 _films_cache_time: Optional[float] = None
 CACHE_TTL = 300  # 5 minutes in seconds
+MAX_DESCRIPTION_LENGTH = 600  # Telegram photo caption limit is 1024 chars, leave room for metadata
 
 
 # Film scraping functionality
@@ -1299,7 +1312,7 @@ async def handle_films_list(bot: Bot, chat_id: int, source_id: str) -> None:
 
         # Create inline keyboard with film buttons
         keyboard = []
-        for film in films:
+        for i, film in enumerate(films):
             # Create button text with emoji and age rating
             age_rating = ""
             if film.fsk_rating:
@@ -1310,7 +1323,7 @@ async def handle_films_list(bot: Bot, chat_id: int, source_id: str) -> None:
 
             button_text = f"🎥 {film.title}{age_rating}"
             # Use source-specific callback data
-            callback_data = f"film_{source_id}_{film.film_id}" if film.film_id else f"film_{source_id}_{films.index(film)}"
+            callback_data = f"film_{source_id}_{film.film_id}" if film.film_id else f"film_{source_id}_{i}"
             keyboard.append([InlineKeyboardButton(button_text, callback_data=callback_data)])
 
         # Add back button
@@ -1364,8 +1377,8 @@ async def handle_film_details_callback(bot: Bot, chat_id: int, film_data: str) -
 
         # Find the requested film
         film = None
-        for f in films:
-            if f.film_id == film_id or str(films.index(f)) == film_id:
+        for i, f in enumerate(films):
+            if f.film_id == film_id or str(i) == film_id:
                 film = f
                 break
 
@@ -1384,14 +1397,14 @@ async def handle_film_details_callback(bot: Bot, chat_id: int, film_data: str) -
         if film.fsk_rating:
             caption += f"👤 {film.fsk_rating}\n"
         if film.duration:
-            caption += f"⏱ {film.duration} мин\n"
+            caption += f"⏱ {film.duration} {get_text(chat_id, 'duration_min')}\n"
 
         caption += "\n"
 
         if film.description:
             desc = film.description
             # Telegram photo caption limit is 1024 chars — leave room for showtimes
-            max_desc = 600
+            max_desc = MAX_DESCRIPTION_LENGTH
             if len(desc) > max_desc:
                 desc = desc[:max_desc - 3] + "..."
             caption += f"{desc}\n\n"
@@ -1404,7 +1417,7 @@ async def handle_film_details_callback(bot: Bot, chat_id: int, film_data: str) -
                 caption += f"• {showtime.date} {showtime.time} - {showtime.room}{lang_info}\n"
 
             if len(film.showtimes) > 10:
-                caption += f"\n... и еще {len(film.showtimes) - 10} сеансов"
+                caption += f"\n{get_text(chat_id, 'more_showtimes', count=len(film.showtimes) - 10)}"
 
         # Create back button with translation
         back_button_text = get_text(chat_id, 'back_to_list')
@@ -1445,7 +1458,7 @@ async def handle_film_details_callback(bot: Bot, chat_id: int, film_data: str) -
         traceback.print_exc()
         await bot.send_message(
             chat_id=chat_id,
-            text="Ошибка при загрузке деталей фильма. Попробуйте снова."
+            text=get_text(chat_id, 'film_details_error')
         )
 
 
@@ -1521,7 +1534,10 @@ async def process_update(update_data: dict) -> dict:
             elif callback_data.startswith('films_source:'):
                 # Show film list for selected source
                 source_id = callback_data.replace('films_source:', '')
-                await handle_films_list(bot, chat_id, source_id)
+                if source_id in CINEMA_SOURCES:
+                    await handle_films_list(bot, chat_id, source_id)
+                else:
+                    await bot.send_message(chat_id=chat_id, text=get_text(chat_id, 'unknown_source'))
 
             elif callback_data == 'back_to_film_sources':
                 # Return to source selection
@@ -1530,7 +1546,10 @@ async def process_update(update_data: dict) -> dict:
             elif callback_data.startswith('back_to_list:'):
                 # Return to films list for specific source
                 source_id = callback_data.replace('back_to_list:', '')
-                await handle_films_list(bot, chat_id, source_id)
+                if source_id in CINEMA_SOURCES:
+                    await handle_films_list(bot, chat_id, source_id)
+                else:
+                    await bot.send_message(chat_id=chat_id, text=get_text(chat_id, 'unknown_source'))
 
             elif callback_data.startswith('sub:'):
                 # Subscribe to source
