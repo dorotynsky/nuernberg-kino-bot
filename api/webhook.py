@@ -1,11 +1,14 @@
 """Vercel serverless function for Telegram webhook."""
 
 import json
+import logging
 import os
 import re
 import time
 from dataclasses import dataclass, field
 from typing import List, Optional, Set
+
+logger = logging.getLogger(__name__)
 
 import httpx
 from bs4 import BeautifulSoup
@@ -79,21 +82,25 @@ def get_mongodb_database():
     return _mongo_db
 
 
-# Inline SubscriberManager (MongoDB version with multi-source support)
-class SubscriberManager:
-    """Manages the list of subscribers for notifications using MongoDB."""
+class BaseMongoManager:
+    """Base class for MongoDB collection managers with lazy init."""
+
+    collection_name: str = None
 
     def __init__(self):
-        """Initialize subscriber manager with lazy MongoDB access."""
-        self._db = None
         self._collection = None
 
     @property
     def collection(self):
         if self._collection is None:
-            self._db = get_mongodb_database()
-            self._collection = self._db['subscribers']
+            self._collection = get_mongodb_database()[self.collection_name]
         return self._collection
+
+
+class SubscriberManager(BaseMongoManager):
+    """Manages the list of subscribers for notifications using MongoDB."""
+
+    collection_name = 'subscribers'
 
     def add_subscription(self, chat_id: int, source_id: str) -> bool:
         """Add subscription to specific source."""
@@ -182,19 +189,10 @@ class SubscriberManager:
         return {doc['chat_id'] for doc in docs}
 
 
-# Language Manager for user language preferences (MongoDB version)
-class LanguageManager:
+class LanguageManager(BaseMongoManager):
     """Manages user language preferences using MongoDB."""
 
-    def __init__(self):
-        """Initialize language manager with lazy MongoDB access."""
-        self._collection = None
-
-    @property
-    def collection(self):
-        if self._collection is None:
-            self._collection = get_mongodb_database()['languages']
-        return self._collection
+    collection_name = 'languages'
 
     def set_language(self, chat_id: int, language: str) -> None:
         """Set language preference for a user."""
@@ -214,19 +212,10 @@ class LanguageManager:
         return self.collection.find_one({'chat_id': chat_id}) is not None
 
 
-# User Version Manager for tracking bot updates
-class UserVersionManager:
+class UserVersionManager(BaseMongoManager):
     """Manages user version tracking for update notifications."""
 
-    def __init__(self):
-        """Initialize version manager with lazy MongoDB access."""
-        self._collection = None
-
-    @property
-    def collection(self):
-        if self._collection is None:
-            self._collection = get_mongodb_database()['user_versions']
-        return self._collection
+    collection_name = 'user_versions'
 
     def set_version(self, chat_id: int, version: str) -> None:
         """Set the bot version that user has seen."""
@@ -465,18 +454,18 @@ def fetch_current_films(source_id: str = 'meisengeige') -> List[Film]:
     if cache_key in globals() and cache_time_key in globals():
         cache_age = current_time - globals()[cache_time_key]
         if cache_age < CACHE_TTL:
-            print(f"[DEBUG] Using cached films data for {source_id} (age: {int(cache_age)}s)")
+            logger.debug(f"Using cached films data for {source_id} (age: {int(cache_age)}s)")
             return globals()[cache_key]
 
     # Fetch fresh data based on source
-    print(f"[DEBUG] Fetching fresh films data from {source_id}...")
+    logger.debug(f"Fetching fresh films data from {source_id}...")
 
     if source_id == 'meisengeige':
         films = fetch_meisengeige_films()
     elif source_id == 'kinderkino':
         films = fetch_kinderkino_films()
     else:
-        print(f"[ERROR] Unknown source_id: {source_id}")
+        logger.error(f"Unknown source_id: {source_id}")
         return []
 
     # Update cache
@@ -511,10 +500,10 @@ def fetch_meisengeige_films() -> List[Film]:
             if film:
                 films.append(film)
 
-        print(f"[DEBUG] Fetched {len(films)} films from Meisengeige")
+        logger.debug(f"Fetched {len(films)} films from Meisengeige")
         return films
     except Exception as e:
-        print(f"[ERROR] Failed to fetch Meisengeige films: {e}")
+        logger.error(f"Failed to fetch Meisengeige films: {e}")
         return []
 
 
@@ -565,7 +554,7 @@ def _parse_single_film(container) -> Optional[Film]:
             showtimes=showtimes,
         )
     except Exception as e:
-        print(f"[ERROR] Error parsing film: {e}")
+        logger.error(f"Error parsing film: {e}")
         return None
 
 
@@ -664,10 +653,10 @@ def fetch_kinderkino_films() -> List[Film]:
             if film:
                 films.append(film)
 
-        print(f"[DEBUG] Fetched {len(films)} films from Kinderkino")
+        logger.debug(f"Fetched {len(films)} films from Kinderkino")
         return films
     except Exception as e:
-        print(f"[ERROR] Failed to fetch Kinderkino films: {e}")
+        logger.error(f"Failed to fetch Kinderkino films: {e}")
         return []
 
 
@@ -751,7 +740,7 @@ def _fetch_kinderkino_detail(detail_url: str) -> Optional[dict]:
         }
 
     except Exception as e:
-        print(f"[ERROR] Failed to parse Kinderkino detail page: {e}")
+        logger.error(f"Failed to parse Kinderkino detail page: {e}")
         return None
 
 
@@ -823,7 +812,7 @@ def _parse_kinderkino_event(card) -> Optional[Film]:
                     if detail_info.get('genre'):
                         genres = [detail_info['genre'], "Kinderkino"]
             except Exception as e:
-                print(f"[WARNING] Failed to fetch detail for {title}: {e}")
+                logger.warning(f"Failed to fetch detail for {title}: {e}")
 
         return Film(
             title=title,
@@ -837,7 +826,7 @@ def _parse_kinderkino_event(card) -> Optional[Film]:
         )
 
     except Exception as e:
-        print(f"[ERROR] Error parsing Kinderkino event: {e}")
+        logger.error(f"Error parsing Kinderkino event: {e}")
         return None
 
 
@@ -875,7 +864,7 @@ def _parse_kinderkino_datetime(text: str, venue: str) -> Optional[Showtime]:
             language=None,  # Can be parsed if available
         )
     except Exception as e:
-        print(f"[ERROR] Error parsing datetime '{text}': {e}")
+        logger.error(f"Error parsing datetime '{text}': {e}")
         return None
 
 
@@ -930,9 +919,9 @@ async def set_user_commands(bot: Bot, chat_id: int, lang: str):
         scope = BotCommandScopeChat(chat_id=chat_id)
 
         await bot.set_my_commands(commands, scope=scope)
-        print(f"[INFO] Set commands for user {chat_id} in language {lang}")
+        logger.info(f"Set commands for user {chat_id} in language {lang}")
     except Exception as e:
-        print(f"[WARNING] Failed to set user-specific commands: {e}")
+        logger.warning(f"Failed to set user-specific commands: {e}")
 
 
 async def setup_bot_commands(bot: Bot):
@@ -954,9 +943,9 @@ async def setup_bot_commands(bot: Bot):
         await bot.set_my_commands(get_commands_for_language('en'))
 
         _commands_last_set = current_time
-        print("[INFO] Bot commands menu initialized for all languages")
+        logger.info("Bot commands menu initialized for all languages")
     except Exception as e:
-        print(f"[WARNING] Failed to set bot commands: {e}")
+        logger.warning(f"Failed to set bot commands: {e}")
 
 
 async def handle_start_command(bot: Bot, chat_id: int, user_first_name: str) -> Optional[str]:
@@ -1022,7 +1011,7 @@ async def send_welcome_message(bot: Bot, chat_id: int, user_first_name: str):
             parse_mode='HTML'
         )
     except Exception as e:
-        print(f"[ERROR] Failed to send welcome photo: {e}")
+        logger.error(f"Failed to send welcome photo: {e}")
         # Fallback to text message if photo fails
         await bot.send_message(
             chat_id=chat_id,
@@ -1060,7 +1049,7 @@ async def handle_status_command(bot: Bot, chat_id: int) -> str:
         Message to send (with HTML formatting)
     """
     try:
-        print(f"[DEBUG] Checking status for chat_id: {chat_id}")
+        logger.debug(f"Checking status for chat_id: {chat_id}")
         user_sources = subscriber_manager.get_user_sources(chat_id)
 
         if not user_sources:
@@ -1081,9 +1070,7 @@ async def handle_status_command(bot: Bot, chat_id: int) -> str:
         return "\n".join(lines)
 
     except Exception as e:
-        print(f"[ERROR] Error in handle_status_command: {e}")
-        import traceback
-        traceback.print_exc()
+        logger.error(f"Error in handle_status_command: {e}", exc_info=True)
         return get_text(chat_id, 'unknown_command')
 
 
@@ -1183,7 +1170,7 @@ async def check_and_notify_version_update(bot: Bot, chat_id: int) -> None:
             # Update user's version
             version_manager.set_version(chat_id, BOT_VERSION)
         except Exception as e:
-            print(f"[WARNING] Failed to send version update to {chat_id}: {e}")
+            logger.warning(f"Failed to send version update to {chat_id}: {e}")
 
 
 async def handle_broadcast_command(bot: Bot, chat_id: int, message_text: str) -> str:
@@ -1200,7 +1187,7 @@ async def handle_broadcast_command(bot: Bot, chat_id: int, message_text: str) ->
     """
     # Check if user is admin
     admin_chat_ids_str = os.getenv('ADMIN_CHAT_IDS', '')
-    admin_chat_ids = [int(id.strip()) for id in admin_chat_ids_str.split(',') if id.strip()]
+    admin_chat_ids = [int(cid.strip()) for cid in admin_chat_ids_str.split(',') if cid.strip()]
 
     if chat_id not in admin_chat_ids:
         return get_text(chat_id, 'broadcast_no_permission')
@@ -1236,7 +1223,7 @@ async def handle_broadcast_command(bot: Bot, chat_id: int, message_text: str) ->
             )
             success_count += 1
         except Exception as e:
-            print(f"[WARNING] Failed to send broadcast to {subscriber_id}: {e}")
+            logger.warning(f"Failed to send broadcast to {subscriber_id}: {e}")
 
     return get_text(chat_id, 'broadcast_success', success=success_count, total=total)
 
@@ -1265,12 +1252,10 @@ async def handle_films_command(bot: Bot, chat_id: int) -> None:
             parse_mode='HTML',
             reply_markup=reply_markup
         )
-        print("[DEBUG] Sent cinema source selection for films")
+        logger.debug("Sent cinema source selection for films")
 
     except Exception as e:
-        print(f"[ERROR] Error in handle_films_command: {e}")
-        import traceback
-        traceback.print_exc()
+        logger.error(f"Error in handle_films_command: {e}", exc_info=True)
         await bot.send_message(
             chat_id=chat_id,
             text=get_text(chat_id, 'films_error')
@@ -1287,7 +1272,7 @@ async def handle_films_list(bot: Bot, chat_id: int, source_id: str) -> None:
         source_id: Cinema source ID
     """
     try:
-        print(f"[DEBUG] Fetching films for source: {source_id}")
+        logger.debug(f"Fetching films for source: {source_id}")
         films = fetch_current_films(source_id)
 
         if not films:
@@ -1330,12 +1315,10 @@ async def handle_films_list(bot: Bot, chat_id: int, source_id: str) -> None:
             parse_mode='HTML',
             reply_markup=reply_markup
         )
-        print(f"[DEBUG] Sent films list with {len(films)} films from {source_name}")
+        logger.debug(f"Sent films list with {len(films)} films from {source_name}")
 
     except Exception as e:
-        print(f"[ERROR] Error in handle_films_list: {e}")
-        import traceback
-        traceback.print_exc()
+        logger.error(f"Error in handle_films_list: {e}", exc_info=True)
         await bot.send_message(
             chat_id=chat_id,
             text=get_text(chat_id, 'films_error')
@@ -1352,7 +1335,7 @@ async def handle_film_details_callback(bot: Bot, chat_id: int, film_data: str) -
         film_data: Film data in format "source_id_film_id" or just "film_id" (legacy)
     """
     try:
-        print(f"[DEBUG] Fetching details for film_data: {film_data}")
+        logger.debug(f"Fetching details for film_data: {film_data}")
 
         # Parse source_id and film_id from callback data
         # New format: "meisengeige_123" or "kinderkino_5"
@@ -1443,12 +1426,10 @@ async def handle_film_details_callback(bot: Bot, chat_id: int, film_data: str) -
                 reply_markup=reply_markup
             )
 
-        print(f"[DEBUG] Sent details for film: {film.title}")
+        logger.debug(f"Sent details for film: {film.title}")
 
     except Exception as e:
-        print(f"[ERROR] Error in handle_film_details_callback: {e}")
-        import traceback
-        traceback.print_exc()
+        logger.error(f"Error in handle_film_details_callback: {e}", exc_info=True)
         await bot.send_message(
             chat_id=chat_id,
             text=get_text(chat_id, 'film_details_error')
@@ -1480,7 +1461,7 @@ async def process_update(update_data: dict) -> dict:
             chat_id = query.message.chat.id
             callback_data = query.data
 
-            print(f"[DEBUG] Processing callback query: '{callback_data}' from chat_id: {chat_id}")
+            logger.debug(f"Processing callback query: '{callback_data}' from chat_id: {chat_id}")
 
             # Answer callback query to remove loading state
             await bot.answer_callback_query(query.id)
@@ -1580,7 +1561,7 @@ async def process_update(update_data: dict) -> dict:
         text = update.message.text.strip()
         user_first_name = update.message.from_user.first_name or "there"
 
-        print(f"[DEBUG] Processing command: '{text}' from chat_id: {chat_id}")
+        logger.debug(f"Processing command: '{text}' from chat_id: {chat_id}")
 
         # Check and notify about version updates (for subscribed users)
         # await check_and_notify_version_update(bot, chat_id)
@@ -1590,58 +1571,56 @@ async def process_update(update_data: dict) -> dict:
         parse_mode = None
 
         if text == '/start':
-            print("[DEBUG] Routing to handle_start_command")
+            logger.debug("Routing to handle_start_command")
             response_text = await handle_start_command(bot, chat_id, user_first_name)
         elif text == '/stop':
-            print("[DEBUG] Routing to handle_stop_command")
+            logger.debug("Routing to handle_stop_command")
             response_text = await handle_stop_command(bot, chat_id)
         elif text == '/status':
-            print("[DEBUG] Routing to handle_status_command")
+            logger.debug("Routing to handle_status_command")
             response_text = await handle_status_command(bot, chat_id)
             parse_mode = 'HTML'
-            print(f"[DEBUG] Response text: {response_text[:50]}...")
+            logger.debug(f"Response text: {response_text[:50]}...")
         elif text == '/language':
-            print("[DEBUG] Routing to handle_language_command")
+            logger.debug("Routing to handle_language_command")
             await handle_language_command(bot, chat_id)
             return {'status': 'success', 'command': text}
         elif text == '/films':
-            print("[DEBUG] Routing to handle_films_command")
+            logger.debug("Routing to handle_films_command")
             await handle_films_command(bot, chat_id)
             return {'status': 'success', 'command': text}
         elif text == '/sources':
-            print("[DEBUG] Routing to handle_sources_command")
+            logger.debug("Routing to handle_sources_command")
             await handle_sources_command(bot, chat_id)
             return {'status': 'success', 'command': text}
         elif text.startswith('/broadcast'):
-            print("[DEBUG] Routing to handle_broadcast_command")
+            logger.debug("Routing to handle_broadcast_command")
             response_text = await handle_broadcast_command(bot, chat_id, text)
         else:
             # Unknown command
-            print(f"[DEBUG] Unknown command: {text}")
+            logger.debug(f"Unknown command: {text}")
             response_text = get_text(chat_id, 'unknown_command')
 
         # Send response (only if response_text is not None)
         # Some handlers (like first-time /start or /films) send their own messages and return None
         if response_text:
-            print(f"[DEBUG] Sending response with parse_mode={parse_mode}")
+            logger.debug(f"Sending response with parse_mode={parse_mode}")
             await bot.send_message(
                 chat_id=chat_id,
                 text=response_text,
                 parse_mode=parse_mode
             )
-            print("[DEBUG] Message sent successfully")
+            logger.debug("Message sent successfully")
         else:
-            print("[DEBUG] Response already sent by handler")
+            logger.debug("Response already sent by handler")
 
         return {'status': 'success', 'command': text}
 
     except TelegramError as e:
-        print(f"Telegram error: {e}")
+        logger.error(f"Telegram error: {e}")
         return {'status': 'error', 'error': str(e)}
     except Exception as e:
-        print(f"Error processing update: {e}")
-        import traceback
-        traceback.print_exc()
+        logger.error(f"Error processing update: {e}", exc_info=True)
         return {'status': 'error', 'error': str(e)}
 
 
@@ -1697,9 +1676,7 @@ class handler(BaseHTTPRequestHandler):
             self.wfile.write(json.dumps(result).encode())
 
         except Exception as e:
-            print(f"Handler error: {e}")
-            import traceback
-            traceback.print_exc()
+            logger.error(f"Handler error: {e}", exc_info=True)
 
             self.send_response(500)
             self.send_header('Content-Type', 'application/json')

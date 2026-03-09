@@ -22,7 +22,7 @@
 | 11 | `src/subscribers.py` — мёртвый код | ✅ DONE (удалён) |
 | 12 | Дублирование кода скрейперов между `src/` и `api/webhook.py` | ⏭️ DEFERRED (рискованно: Vercel может не видеть `src/`, нужен отдельный тест) |
 | 13 | `webhook.py` — 1680+ строк, сложно поддерживать | ⏭️ DEFERRED (связано с #12, нужен тест импорта `src/` на Vercel) |
-| 14 | Три менеджера MongoDB с одинаковым lazy init паттерном | ⏭️ WONTFIX (менеджеры маленькие, абстракция — over-engineering) |
+| 14 | Три менеджера MongoDB с одинаковым lazy init паттерном | ✅ DONE (вынесен `BaseMongoManager`) |
 | 15 | `CINEMA_SOURCES` dict дублирует данные скрейперов | ⏭️ DEFERRED (связано с #12) |
 | 16 | `source_registry.py` не используется в webhook | ⏭️ DEFERRED (связано с #12) |
 | 17 | Нет типизации для callback data (строковые паттерны) | ✅ DONE (добавлена валидация source_id в callback handlers) |
@@ -32,7 +32,7 @@
 
 | # | Описание | Статус |
 |---|----------|--------|
-| 19 | `ADMIN_CHAT_ID` сравнивается как строка | ❌ N/A (ложное: сравнивается как int через `int(id.strip())`) |
+| 19 | `ADMIN_CHAT_ID` сравнивается как строка | ❌ N/A (ложное: сравнивается как int) |
 | 20 | Нет rate limiting на команды | ⏭️ WONTFIX (Telegram API уже имеет rate limiting, stateless Vercel не позволяет) |
 | 21 | MongoDB URI может попасть в traceback | ✅ DONE (обёрнуто в try/except с generic ConnectionError) |
 
@@ -40,6 +40,6 @@
 
 | # | Описание | Статус |
 |---|----------|--------|
-| 22 | `print("[DEBUG]")` вместо `logging` | ⏭️ WONTFIX (масштабное изменение, print работает в Vercel) |
-| 23 | Неконсистентные имена переменных | ⏭️ WONTFIX (косметическое, рискованно без тестов) |
+| 22 | `print("[DEBUG]")` вместо `logging` | ✅ DONE (заменено на `logging` module) |
+| 23 | Неконсистентные имена переменных | ✅ DONE (исправлен `id` → `cid`, остальные консистентны) |
 | 24 | Magic numbers без именованных констант | ✅ DONE (`MAX_DESCRIPTION_LENGTH` вынесена) |
